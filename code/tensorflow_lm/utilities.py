@@ -1,10 +1,11 @@
-import matplotlib.pyplot as plt
-import numpy as np
+from keras.preprocessing.text import Tokenizer
+from keras.preprocessing.sequence import pad_sequences
+from keras.utils import np_utils
 import csv
 import configuration as config
+from sklearn.preprocessing import LabelEncoder
 import random
 import heapq
-
 import re
 import numpy as np
 import scipy.stats
@@ -213,3 +214,37 @@ def sampleFromDistribution(vals):
 				if s>=p:
 						return i
 		return len(vals)-1
+
+
+
+
+def sampleFromDistribution(vals):
+    p = random.random()
+    s=0.0
+    for i,v in enumerate(vals):
+        s+=v
+        if s>=p:
+            return i
+    return len(vals)-1
+
+def generateSentence(model, word_to_index, start_token, end_token, unknown_token ):
+    x = [ word_to_index[start_token] ]
+    i=1
+    while i<config.MAX_SEQUENCE_LENGTH:
+        x_temp = pad_sequences([x], maxlen=config.MAX_SEQUENCE_LENGTH, padding='post', truncating='post')
+        data = np.array( [ sequence[:-1] for sequence in x_temp] ) # only 1 sequence is actually there
+        y = model.predict( data )
+        #if i==1:
+        idx = sampleFromDistribution(y[0][i])    
+        #else:
+        #    idx = np.argmax(y[0][i])
+        if idx == word_to_index[end_token]:
+            return x
+        if idx == word_to_index[unknown_token]:
+            i = 1
+            x = [ word_to_index[start_token] ]
+            print "Found unknown char. Retrying."
+            continue
+        x.append(idx)
+        i += 1
+    return x[1:] # removing sentence start
