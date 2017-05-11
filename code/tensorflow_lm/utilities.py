@@ -206,17 +206,6 @@ class OutputSentence(object):
 
 ################################################################
 
-def sampleFromDistribution(vals):
-		p = random.random()
-		s=0.0
-		for i,v in enumerate(vals):
-				s+=v
-				if s>=p:
-						return i
-		return len(vals)-1
-
-
-
 
 def sampleFromDistribution(vals):
     p = random.random()
@@ -248,3 +237,36 @@ def generateSentence(model, word_to_index, start_token, end_token, unknown_token
         x.append(idx)
         i += 1
     return x[1:] # removing sentence start
+
+
+########################
+
+def getPerplexityFromProbs(res, val_y, validation_data, stop_on_finding=0): # res : batch_size * num_steps..
+    pred = np.zeros((res.shape[0], res.shape[1]))
+    lengths = np.zeros(res.shape[0])    
+    for b in range(res.shape[0]):
+        for s in range(res.shape[1]):
+            if validation_data[0][b][s] == stop_on_finding:
+                lengths[b] = s
+                break
+            pred[b][s] = res[b][s][val_y[b][s]]
+            pred[b][s] = np.log(pred[b][s])
+            lengths[b] = s+1
+    pred = -np.sum(pred, axis=1)
+    pred = np.sum(pred) / np.sum(lengths)
+    pred = np.power(np.e, pred)
+    return pred
+
+
+def getPerplexityFromSumProbs(res, val_y, stop_on_finding=0): # res : batch_size.  val_y: batch_size * num_steps
+    lengths = np.zeros(res.shape[0])    
+    for b in range(res.shape[0]):
+        for s in range(val_y.shape[1]):
+            if val_y[b][s] == stop_on_finding:
+                lengths[b] = s
+                break
+            lengths[b] = s+1
+    pred = np.array(res)
+    pred = np.sum(pred) / np.sum(lengths)
+    pred = np.power(np.e, -pred)
+    return pred

@@ -12,6 +12,7 @@ import keras_models
 from keras.callbacks import ModelCheckpoint
 
 debug_mode = True
+all_lengths = []
 
 class PreProcessing:
 
@@ -53,12 +54,14 @@ class PreProcessing:
 		return [self.index_word[x] for x in seq]
 
 	def tokenizer(self, texts):
+		global all_lengths
 		ret = [ word_tokenize(text.lower()) for text in texts ]
 		for text in ret:
 			for token in text:
 				if token not in self.word_index:
 					self.word_index[token] = self.word_index_counter
 					self.word_index_counter+=1
+			all_lengths.append(len(text))
 		ret = [ [ self.word_index[t] for t in text ] for text in ret ]
 		return ret
 
@@ -97,8 +100,8 @@ class PreProcessing:
 			labels = np.array( [ np.expand_dims(sequence[1:],-1) for sequence in sequences ] )
 
 		if debug_mode:
-			data = data[:200]
-			labels = labels[:200]
+			data = data[:192]
+			labels = labels[:192]
 		return data,labels
 
 def getPretrainedEmbeddings(src):
@@ -116,8 +119,6 @@ def getPretrainedEmbeddings(src):
 
 def main():
 
-
-
 	# buckets
 	buckets = {  0:{'max_input_seq_length':39 } } # 40-1=39
 	print buckets
@@ -128,10 +129,10 @@ def main():
 	params['embeddings_dim'] =  config.embeddings_dim
 	params['lstm_cell_size'] = config.lstm_cell_size
 	params['max_input_seq_length'] = config.MAX_SEQUENCE_LENGTH - 1 #inputs are all but last element, outputs are al but first element
-	params['batch_size'] = 20
+	params['batch_size'] = 32
 	params['pretrained_embeddings']=False
 	params['char_or_word'] = "word"
-	params['use_tf'] = False
+	params['use_tf'] = True
 	print params
 
 	preprocessing = PreProcessing(params)
@@ -148,6 +149,12 @@ def main():
 	test = preprocessing.prepareLMdata(test_sequences)
 	#return
 
+	#
+	global all_lengths
+	all_lengths = np.array(all_lengths)
+	import scipy.stats
+	print " *** ", scipy.stats.describe(all_lengths)
+
 	params['vocab_size'] =  preprocessing.word_index_counter
 	print "params['vocab_size'] --------> ",params['vocab_size']
 
@@ -161,7 +168,7 @@ def main():
 	
 	if params['use_tf']:
 		# model
-		mode='train'
+		mode=  "train" #"inference" # 'train'
 		if mode=='train':
 			train_buckets = {}
 			for bucket,_ in enumerate(buckets):
@@ -169,20 +176,16 @@ def main():
 
 			rnn_model = solver.Solver(buckets)
 			_ = rnn_model.getModel(params, mode='train',reuse=False, buckets=buckets)
-			rnn_model.trainModel(config=params, train_feed_dict=train_buckets, val_feed_dct=None, reverse_vocab=preprocessing.index_word, do_init=True)
+			rnn_model.trainModel(config=params, train_feed_dict=train_buckets, val_feed_dct=val, reverse_vocab=preprocessing.index_word, do_init=True)
 		
 		else:
-			val_encoder_inputs, val_decoder_inputs, val_decoder_outputs = val
-			print "val_encoder_inputs = ",val_encoder_inputs
-
-			if len(val_decoder_outputs.shape)==3:
-				val_decoder_outputs=np.reshape(val_decoder_outputs, (val_decoder_outputs.shape[0], val_decoder_outputs.shape[1]))
-
 			rnn_model = solver.Solver(buckets=None, mode='inference')
+			params['max_inp_seq_length'] = 39
 			_ = rnn_model.getModel(params, mode='inference', reuse=False, buckets=None)
 			print "----Running inference-----"
 			#rnn_model.runInference(params, val_encoder_inputs[:params['batch_size']], val_decoder_outputs[:params['batch_size']], preprocessing.index_word)
-			rnn_model.solveAll(params, val_encoder_inputs, val_decoder_outputs, preprocessing.index_word)
+			valx, valy = val
+			rnn_model.solveAll(params, valx, valy, preprocessing.index_word)
 
 	else: #Keras
 		print "KERAS MODEL"

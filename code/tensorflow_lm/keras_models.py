@@ -9,6 +9,7 @@ from keras.utils import np_utils
 from keras.layers import Conv1D, MaxPooling1D, Embedding
 from keras.layers import Input, Embedding, LSTM, Dense, merge, SimpleRNN, TimeDistributed
 import keras
+import utilities
 
 model = None
 validation_data = None
@@ -21,22 +22,10 @@ class PerplexityCalculator(keras.callbacks.Callback):
         global model
         global validation_data
         res = model.predict(validation_data[0])
-        lengths = np.zeros(res.shape[0])
         val_y = validation_data[1]
-        pred = np.zeros((res.shape[0], res.shape[1]))
-        for b in range(res.shape[0]):
-            for s in range(res.shape[1]):
-                if validation_data[0][b][s] == 0:
-                    lengths[b] = s
-                    break
-                pred[b][s] = res[b][s][val_y[b][s]]
-                pred[b][s] = np.log(pred[b][s])
-                lengths[b] = s+1
-        pred = -np.sum(pred, axis=1)
-        pred /= lengths
-        pred = np.power(2, pred)
+        pred = utilities.getPerplexityFromProbs(res, val_y)
         print "\n\n"
-        print "Perplexity: " + str(np.mean(pred))
+        print "Perplexity: " + pred
         print "\n\n"
 
 

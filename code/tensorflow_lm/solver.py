@@ -24,8 +24,6 @@ class Solver:
 		self.token_output_sequences_placeholder_list = []
 
 		if mode=='train':
-			#########################
-			print "==================================================="
 			for bucket_num, bucket_dct in self.buckets.items():
 				config['max_inp_seq_length'] = bucket_dct['max_input_seq_length']
 				print ""
@@ -34,19 +32,21 @@ class Solver:
 				self.preds.append(pred)
 				self.cost_list.append( self.model_obj.cost )
 				reuse=True
-			
-			decoder_bucket_number = 0
-			decoder_outputs_preds = self.model_obj.getDecoderModel(config, is_training=False, mode='training', reuse=True, bucket_num=decoder_bucket_number)	
-			self.decoder_outputs_preds = decoder_outputs_preds
-
 			self.token_input_sequences_placeholder_list  = self.model_obj.token_input_sequences_placeholder_list
 			self.token_output_sequences_placeholder_list = self.model_obj.token_output_sequences_placeholder_list
 			self.mask_list = self.model_obj.masker_list
+			
+			# for predictions / sampler
+			bucket_num_for_preds = 0 # TO DO: creat separate input placeholder for this
+			decoder_outputs_preds = self.model_obj.getDecoderModel(config, is_training=False, mode='training', reuse=True, bucket_num=bucket_num_for_preds)	
+			self.decoder_inputs_preds = self.token_input_sequences_placeholder_list[bucket_num_for_preds]
+			self.decoder_outputs_preds = decoder_outputs_preds
 		else:
-			#config['batch_size'] = 5
-			encoder_outputs = self.model_obj.getEncoderModel(config, mode='inference', reuse=reuse)
-			self.decoder_outputs_inference = self.model_obj.getDecoderModel(config, is_training=False, 	mode='inference', reuse=False)	
-
+			pass # TODO
+			decoder_outputs_preds = self.model_obj.getDecoderModel(config, is_training=False, mode='inference', reuse=reuse)	
+			self.decoder_inputs_preds = self.model_obj.token_input_sequences_placeholder_inference
+			self.decoder_outputs_preds = decoder_outputs_preds
+			
 	def trainModel(self, config, train_feed_dict, val_feed_dct, reverse_vocab, do_init=True):
 		
 		# Initializing the variables
@@ -64,10 +64,10 @@ class Solver:
 		print("==================")
 
 
-		for bucket_num,bucket in enumerate(self.buckets):
+		for bucket_num,bucket in enumerate(self.buckets): # move training_iters loop before this
 			input_sequences, output_sequences = train_feed_dict[bucket_num]
-			print input_sequences[0]
-			print output_sequences[0]
+			print "input_sequences[0] = ", input_sequences[0]
+			print "output_sequences[0] = ", output_sequences[0]
 			#cost = self.model_obj.cost
 
 			# if y is passed as (N, seq_length, 1): change it to (N,seq_length)
@@ -78,9 +78,6 @@ class Solver:
 			token_input_sequences_placeholder = self.token_input_sequences_placeholder_list[bucket_num]
 			token_output_sequences_placeholder = self.token_output_sequences_placeholder_list[bucket_num]
 			feed_dct={token_input_sequences_placeholder:input_sequences, token_output_sequences_placeholder:output_sequences }
-
-			#print "token_lookup_sequences_placeholder,  = ",token_lookup_sequences_placeholder, "\n token_output_sequences_decoder_placeholder = ",token_output_sequences_decoder_placeholder,"token_lookup_sequences_decoder_placeholder=",token_lookup_sequences_decoder_placeholder
-			#print "\n encoder_inputs = ",encoder_inputs.shape, "\ndecoder_outputs =  ",decoder_outputs.shape, "\n decoder_inputs =  ", decoder_inputs.shape
 
 			pred = self.preds[bucket_num]
 			masker = self.mask_list[bucket_num]
@@ -93,17 +90,19 @@ class Solver:
 
 			sess = self.sess
 
-			training_iters=50
-			display_step=2
-			sample_step=2
-			save_step = 39
+			training_iters=5
+			display_step=1
+			sample_step=3
+			save_step = 4
 			n = feed_dct[token_input_sequences_placeholder].shape[0]
+
 			# Launch the graph
 			step = 1
 			#preds = np.array( sess.run(self.pred, feed_dict= feed_dct) )
 			#print preds
 			#with tf.Session() as sess:
 			while step < training_iters:
+				print "STEP = ",step
 				#num_of_batches =  n/batch_size #(n+batch_size-1)/batch_size
 				num_of_batches =  (n+batch_size-1)/batch_size
 				for j in range(num_of_batches):
@@ -117,24 +116,24 @@ class Solver:
 					mask = np.zeros(cur_out.shape, dtype=np.float)
 					mask[x,y]=1
 					feed_dict_cur[masker]=mask
-
 					sess.run(optimizer, feed_dict=feed_dict_cur )
-					if step % display_step == 0:
-						if j<10:
-						#print " j = ",j
-							loss = sess.run(cost, feed_dict= feed_dict_cur)
-							print "step ",step," : ",loss
-					if step % sample_step == 0:
-						if j==0:
-		  					self.runInference( config, input_sequences[:batch_size], output_sequences[:batch_size], reverse_vocab, sess )
-							'''pred_cur = np.array( sess.run(pred, feed_dict= feed_dict_cur) )
-							print pred_cur.shape
-							print pred_cur[0].shape
-							print np.sum(pred_cur[0],axis=1)
-							'''
+
+				if step % display_step == 0:
+	  				val_x,val_y = val_feed_dct
+					self.getLoss(config, val_x, val_y, token_input_sequences_placeholder, token_output_sequences_placeholder, masker, cost, sess)
+	  				self.solveAll(config, val_x, val_y, reverse_vocab, sess)
+
+				if step % sample_step == 0:
+  					self.runInference( config, input_sequences[:batch_size], output_sequences[:batch_size], reverse_vocab, sess )
+					'''pred_cur = np.array( sess.run(pred, feed_dict= feed_dict_cur) )
+					print pred_cur.shape
+					print pred_cur[0].shape
+					print np.sum(pred_cur[0],axis=1)
+					'''
 				if step%save_step==0:
 					save_path = saver.save(sess, "./tmp/model"+str(step)+".ckpt")
 	  				print "Model saved in file: ",save_path
+
 				step += 1
 
 		self.saver = saver
@@ -142,62 +141,92 @@ class Solver:
 
 	###################################################################################
 
-	def runInference(self, config, input_sequences, output_sequences, reverse_vocab, sess=None, print_all=True): # sampling
-		print " Inference STEP ...... ============================================================"
+	def runInference(self, config, input_sequences, output_sequences, reverse_vocab, sess=None, print_all=True): # Probabilties
+		if print_all:
+			print " Inference STEP ...... ============================================================"
 		if sess==None:
+			print "sess is None.. LOAD?ING SAVED MODEL"
 	  		sess = tf.Session()
 	  		saver = tf.train.Saver()
-	  		saver.restore(sess, "./tmp/model39.ckpt")
-		typ = "greedy" #config['inference_type']
+	  		saver.restore(sess, "./tmp/model4.ckpt")
 		model_obj = self.model_obj
-		bucket_num = 0
 		end_index = 2 # TO_DO load this from config
-		feed_dct={model_obj.token_input_sequences_placeholder_list[bucket_num]:input_sequences}
+		feed_dct={self.decoder_inputs_preds:input_sequences}
 		batch_size = config['batch_size'] #x_test.shape[0]
 		preds =  self.decoder_outputs_preds
-		if typ=="greedy":
-			preds = np.array( sess.run(preds, feed_dict= feed_dct) ) # timesteps, N, vocab_size
-			timesteps, N, vocab_size = preds.shape
-			print "preds.shape = ",preds.shape
-			assert N==batch_size
-			probs = np.zeros(batch_size)
-			for i in range(batch_size):
-				t=0 
-				while t<timesteps and output_sequences[i][t]!=0:
-					next_word = output_sequences[i][t]
-					next_word_prob = preds[t][i][next_word]
-					probs[i] += np.log(next_word_prob)
-					t+=1
+		preds = np.array( sess.run(preds, feed_dict= feed_dct) ) # timesteps, N, vocab_size
+		timesteps, N, vocab_size = preds.shape
+		#print "preds.shape = ",preds.shape
+		assert N==batch_size
+		probs = np.zeros(batch_size)
+		for i in range(batch_size):
+			t=0 
+			while t<timesteps and output_sequences[i][t]!=0:
+				next_word = output_sequences[i][t]
+				next_word_prob = preds[t][i][next_word]
+				probs[i] += np.log(next_word_prob)
+				t+=1
+		if print_all:
 			print "log likelihoods are as follows : "
 			print probs
+		return probs
 
 	###################################################################################
 
-	def solveAll(self, config, encoder_inputs, decoder_ground_truth_outputs, reverse_vocab, sess=None): # sampling
+	def solveAll(self, config, input_sequences, output_sequences, reverse_vocab, sess=None): # Probabilities
 		print " SolveAll ...... ============================================================"
 		batch_size = config['batch_size']
-		num_batches = ( len(encoder_inputs) + batch_size - 1)/ batch_size 
-		print "num_batches = ",num_batches
-		print "batch_size = ",batch_size
-		print "len(encoder_inputs) = ",len(encoder_inputs)
-		decoder_outputs_inference = []
+		num_batches = ( len(input_sequences) + batch_size - 1)/ batch_size 
+		#print "num_batches = ",num_batches
+		#print "batch_size = ",batch_size
+		#print "len(input_sequences) = ",len(input_sequences)
+		probs = []
 		for i in range(num_batches):
-			print "i= ",i
-			encoder_inputs_cur = encoder_inputs[i*batch_size:(i+1)*batch_size]
-			decoder_gt_outputs_cur = decoder_ground_truth_outputs[i*batch_size:(i+1)*batch_size]
-			lim = len(encoder_inputs_cur)
-			if len(encoder_inputs_cur)<batch_size:
+			#print "i= ",i
+			cur_input_sequences = input_sequences[i*batch_size:(i+1)*batch_size]
+			cur_output_sequences = output_sequences[i*batch_size:(i+1)*batch_size]
+			lim = len(cur_input_sequences)
+			if len(cur_input_sequences)<batch_size:
+				gap = batch_size - len(cur_input_sequences)
+				for j in range(gap):
+					cur_output_sequences = np.vstack( (cur_output_sequences, cur_output_sequences[0]) )
+					cur_input_sequences = np.vstack( (cur_input_sequences, cur_input_sequences[0]) )
+			cur_probs = self.runInference(config, cur_input_sequences, cur_output_sequences, reverse_vocab, sess=sess, print_all=False)
+			probs.extend( cur_probs[:lim] )
+		probs = np.array(probs)
+		#print "probs.shape: ",probs.shape
+		#print "probs[0:2] = ", probs[0:2]
+		#print len(input_sequences)
+		#print len(probs)
+		#print input_sequences[0], output_sequences[0], probs.shape
+		print "PREPLEXITY = ", utils.getPerplexityFromSumProbs(probs, output_sequences)
+
+	###################################################################################
+
+	def getLoss(self, config, input_sequences, output_sequences, inp_placeholder, out_placeholder, mask_placeholder,  loss_variable, sess): # Probabilities
+		print " getLoss ...... ============================================================"
+		batch_size = config['batch_size']
+		num_batches = ( len(input_sequences) + batch_size - 1)/ batch_size 
+		loss = []
+		for i in range(num_batches):
+			#print "i= ",i
+			cur_input_sequences = input_sequences[i*batch_size:(i+1)*batch_size]
+			cur_output_sequences = output_sequences[i*batch_size:(i+1)*batch_size]
+			lim = len(cur_input_sequences)
+			if len(cur_input_sequences)<batch_size:
 				gap = batch_size - len(encoder_inputs_cur)
 				for j in range(gap):
-					encoder_inputs_cur = np.vstack( (encoder_inputs_cur,encoder_inputs[0]) )
-					decoder_gt_outputs_cur = np.vstack( (decoder_gt_outputs_cur,decoder_ground_truth_outputs[0]) )
-					#decoder_gt_outputs_cur.extend(decoder_ground_truth_outputs[0]*gap)
-			decoder_outputs_inference_cur = self.runInference(config, encoder_inputs_cur, decoder_gt_outputs_cur, reverse_vocab, sess=None, print_all=False)
-			decoder_outputs_inference.extend( decoder_outputs_inference_cur[:lim] )
-		print len(encoder_inputs)
-		print len(decoder_outputs_inference)
-		print decoder_outputs_inference[0], decoder_ground_truth_outputs[0]
-		print utils.getScores(decoder_outputs_inference, decoder_ground_truth_outputs)
+					cur_output_sequences = np.vstack( (cur_output_sequences, cur_output_sequences[0]) )
+					cur_input_sequences = np.vstack( (cur_input_sequences, cur_input_sequences[0]) )
+			feed_dct = {inp_placeholder:cur_input_sequences, out_placeholder:cur_output_sequences}
+			mask = np.zeros(cur_output_sequences.shape, dtype=np.float)
+			x,y = np.nonzero(cur_output_sequences)
+			mask[x,y]=1
+			feed_dct[mask_placeholder]=mask
+			cur_loss = sess.run(loss_variable, feed_dct)
+			loss.append( cur_loss )
+		loss = np.array(loss)
+		print "LOSS = ", np.mean(loss)
 
 
 ########################################################################################
