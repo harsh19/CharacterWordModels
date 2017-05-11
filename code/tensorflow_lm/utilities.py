@@ -227,10 +227,10 @@ def sampleFromDistribution(vals):
             return i
     return len(vals)-1
 
-def generateSentence(model, word_to_index, start_token, end_token, unknown_token ):
+def generateSentence(model, word_to_index, start_token, end_token, unknown_token, maxlen = config.MAX_SEQUENCE_LENGTH-1 ):
     x = [ word_to_index[start_token] ]
     i=1
-    while i<config.MAX_SEQUENCE_LENGTH:
+    while i<maxlen:
         x_temp = pad_sequences([x], maxlen=config.MAX_SEQUENCE_LENGTH, padding='post', truncating='post')
         data = np.array( [ sequence[:-1] for sequence in x_temp] ) # only 1 sequence is actually there
         y = model.predict( data )

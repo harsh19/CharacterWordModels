@@ -8,10 +8,41 @@ from keras.layers import Merge
 from keras.utils import np_utils
 from keras.layers import Conv1D, MaxPooling1D, Embedding
 from keras.layers import Input, Embedding, LSTM, Dense, merge, SimpleRNN, TimeDistributed
+import keras
+
+model = None
+validation_data = None
+
+class PerplexityCalculator(keras.callbacks.Callback):
+    def on_epoch_begin(self, epoch, logs={}):
+        pass
+
+    def on_epoch_end(self, epoch, logs={}):
+        global model
+        global validation_data
+        res = model.predict(validation_data[0])
+        lengths = np.zeros(res.shape[0])
+        val_y = validation_data[1]
+        pred = np.zeros((res.shape[0], res.shape[1]))
+        for b in range(res.shape[0]):
+            for s in range(res.shape[1]):
+                if validation_data[0][b][s] == 0:
+                    lengths[b] = s
+                    break
+                pred[b][s] = res[b][s][val_y[b][s]]
+                pred[b][s] = np.log(pred[b][s])
+                lengths[b] = s+1
+        pred = -np.sum(pred, axis=1)
+        pred /= lengths
+        pred = np.power(2, pred)
+        print "\n\n"
+        print "Perplexity: " + str(np.mean(pred))
+        print "\n\n"
 
 
 class RNNModel:
 	def getModel(self, params, weight=None  ):
+		global model
 		
 		lstm_cell_size = params['lstm_cell_size']
 		initial_state= np.random.rand(lstm_cell_size)

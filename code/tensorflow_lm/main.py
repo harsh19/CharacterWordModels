@@ -8,12 +8,14 @@ import pickle
 import utilities as datasets
 import utilities
 import solver
+import keras_models
+from keras.callbacks import ModelCheckpoint
 
 debug_mode = True
 
 class PreProcessing:
 
-	def __init__(self):
+	def __init__(self, params):
 		self.unknown_word = "UNKNOWN" # not used
 		self.sent_start = "SENTSTART".lower()
 		self.sent_end = "SENTEND".lower()
@@ -28,6 +30,8 @@ class PreProcessing:
 		self.word_index_counter+=1
 		self.word_index[self.sent_end] = self.word_index_counter
 		self.word_index_counter+=1
+
+		self.params = params
 
 	def pad_sequences_my(self, sequences, maxlen, padding='post', truncating='post'):
 		ret=[]
@@ -61,7 +65,17 @@ class PreProcessing:
 	def loadData(self, split='train'):   
 		print "loading " ,split," data..."
 		data_src = config.data_src + "." + split + ".txt"
-		texts = open(data_src,"r").readlines()
+		texts=[]
+		if debug_mode:
+			with open(data_src,"r") as fr:
+				ctr=0
+				for line in fr:
+					texts.append(line)
+					ctr+=1
+					if ctr>200:
+						break
+		else:
+			texts = open(data_src,"r").readlines()
 		texts = [self.sent_start + " " + text + " " + self.sent_end for text in texts]
 		
 		sequences = self.tokenizer(texts)
@@ -77,7 +91,11 @@ class PreProcessing:
 
 	def prepareLMdata(self, sequences):
 		data = np.array( [ sequence[:-1] for sequence in sequences ] )
-		labels = np.array( [sequence[1:] for sequence in sequences ] )
+		if self.params['use_tf']:
+			labels = np.array( [sequence[1:] for sequence in sequences ] )
+		else:
+			labels = np.array( [ np.expand_dims(sequence[1:],-1) for sequence in sequences ] )
+
 		if debug_mode:
 			data = data[:200]
 			labels = labels[:200]
@@ -97,15 +115,30 @@ def getPretrainedEmbeddings(src):
 
 
 def main():
-	preprocessing = PreProcessing()
 
+
+
+	# buckets
 	buckets = {  0:{'max_input_seq_length':39 } } # 40-1=39
 	print buckets
 	print "==================================================="
 
+	# get model
+	params = {}
+	params['embeddings_dim'] =  config.embeddings_dim
+	params['lstm_cell_size'] = config.lstm_cell_size
+	params['max_input_seq_length'] = config.MAX_SEQUENCE_LENGTH - 1 #inputs are all but last element, outputs are al but first element
+	params['batch_size'] = 20
+	params['pretrained_embeddings']=False
+	params['char_or_word'] = "word"
+	params['use_tf'] = False
+	print params
+
+	preprocessing = PreProcessing(params)
+
 	train_sequences = preprocessing.loadData(split='train')		
 	val_sequences = preprocessing.loadData(split='valid')		
-	test_sequences = preprocessing.loadData(split='test')		
+	test_sequences = preprocessing.loadData(split='test')	
 	print preprocessing.word_index[preprocessing.sent_start]
 	print preprocessing.word_index[preprocessing.sent_end]
 	index_word = {i:w for w,i in preprocessing.word_index.items()}
@@ -115,6 +148,9 @@ def main():
 	test = preprocessing.prepareLMdata(test_sequences)
 	#return
 
+	params['vocab_size'] =  preprocessing.word_index_counter
+	print "params['vocab_size'] --------> ",params['vocab_size']
+
 	data,labels = train
 	print "--------- SAMPLE & shape..."
 	print "train data.shape ",data.shape
@@ -123,41 +159,68 @@ def main():
 	print "sample outputs: ",labels[0]
 	print "-------------------"
 	
-	# get model
-	params = {}
-	params['embeddings_dim'] =  config.embeddings_dim
-	params['lstm_cell_size'] = config.lstm_cell_size
-	params['vocab_size'] =  preprocessing.word_index_counter
-	print "params['vocab_size'] --------> ",params['vocab_size']
-	params['max_input_seq_length'] = config.MAX_SEQUENCE_LENGTH - 1 #inputs are all but last element, outputs are al but first element
-	params['batch_size'] = 20
-	params['pretrained_embeddings']=False
-	print params
-	
-	
-	# model
-	mode='train'
-	if mode=='train':
-		train_buckets = {}
-		for bucket,_ in enumerate(buckets):
-			train_buckets[bucket] = train
+	if params['use_tf']:
+		# model
+		mode='train'
+		if mode=='train':
+			train_buckets = {}
+			for bucket,_ in enumerate(buckets):
+				train_buckets[bucket] = train
 
-		rnn_model = solver.Solver(buckets)
-		_ = rnn_model.getModel(params, mode='train',reuse=False, buckets=buckets)
-		rnn_model.trainModel(config=params, train_feed_dict=train_buckets, val_feed_dct=None, reverse_vocab=preprocessing.index_word, do_init=True)
-	
-	else:
-		val_encoder_inputs, val_decoder_inputs, val_decoder_outputs = val
-		print "val_encoder_inputs = ",val_encoder_inputs
+			rnn_model = solver.Solver(buckets)
+			_ = rnn_model.getModel(params, mode='train',reuse=False, buckets=buckets)
+			rnn_model.trainModel(config=params, train_feed_dict=train_buckets, val_feed_dct=None, reverse_vocab=preprocessing.index_word, do_init=True)
+		
+		else:
+			val_encoder_inputs, val_decoder_inputs, val_decoder_outputs = val
+			print "val_encoder_inputs = ",val_encoder_inputs
 
-		if len(val_decoder_outputs.shape)==3:
-			val_decoder_outputs=np.reshape(val_decoder_outputs, (val_decoder_outputs.shape[0], val_decoder_outputs.shape[1]))
+			if len(val_decoder_outputs.shape)==3:
+				val_decoder_outputs=np.reshape(val_decoder_outputs, (val_decoder_outputs.shape[0], val_decoder_outputs.shape[1]))
 
-		rnn_model = solver.Solver(buckets=None, mode='inference')
-		_ = rnn_model.getModel(params, mode='inference', reuse=False, buckets=None)
-		print "----Running inference-----"
-		#rnn_model.runInference(params, val_encoder_inputs[:params['batch_size']], val_decoder_outputs[:params['batch_size']], preprocessing.index_word)
-		rnn_model.solveAll(params, val_encoder_inputs, val_decoder_outputs, preprocessing.index_word)
+			rnn_model = solver.Solver(buckets=None, mode='inference')
+			_ = rnn_model.getModel(params, mode='inference', reuse=False, buckets=None)
+			print "----Running inference-----"
+			#rnn_model.runInference(params, val_encoder_inputs[:params['batch_size']], val_decoder_outputs[:params['batch_size']], preprocessing.index_word)
+			rnn_model.solveAll(params, val_encoder_inputs, val_decoder_outputs, preprocessing.index_word)
+
+	else: #Keras
+		print "KERAS MODEL"
+
+		params['inp_length'] = 	params['max_input_seq_length']
+		rnn_model = keras_models.RNNModel()
+		model = rnn_model.getModel(params)
+		
+		#x_train, y_train, x_val, y_val, x_test, y_test = preprocessing.x_train, preprocessing.y_train, preprocessing.x_val, preprocessing.y_val, preprocessing.x_test, preprocessing.y_test
+		x_train, y_train = train
+		x_val, y_val = val
+		x_test, y_test = test
+
+		#call backs
+		perplexity_callback = keras_models.PerplexityCalculator()
+		weight_save_callback = ModelCheckpoint( 'tmp/keras_checkpoints/' + '_weights.{epoch:02d}-{val_loss:.2f}.hdf5', monitor='val_loss',verbose=0, save_best_only=False, mode='auto')
+
+		# train
+		keras_models.validation_data = (x_val, y_val)
+		model.fit(x_train, y_train, validation_data=(x_val, y_val),
+				  nb_epoch=3, batch_size= params['batch_size'], callbacks=[weight_save_callback, perplexity_callback] ) #config.num_epochs
+		#saveEmbeddings(model, preprocessing.word_index)
+				  
+		#evaluate
+		scores = model.evaluate(x_test, y_test, verbose=0)
+		print("Accuracy: %.2f%%" % (scores[1]*100))
+
+		print "--- Sampling few sequences.. "
+		for i in range(5):
+			print ""
+			pred = utilities.generateSentence(model, preprocessing.word_index, preprocessing.sent_start, 
+				preprocessing.sent_end, preprocessing.unknown_word)
+			sent = [preprocessing.index_word[i] for i in pred]
+			if params['char_or_word'] == "char":
+				print ''.join(sent)
+			else:
+				print ' '.join(sent)
+
 
 if __name__ == "__main__":
 	main()
