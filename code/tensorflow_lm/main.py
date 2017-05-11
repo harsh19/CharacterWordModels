@@ -79,7 +79,8 @@ class PreProcessing:
 		data = np.array( [ sequence[:-1] for sequence in sequences ] )
 		labels = np.array( [sequence[1:] for sequence in sequences ] )
 		if debug_mode:
-			data = data[:200], labels[:200]
+			data = data[:200]
+			labels = labels[:200]
 		return data,labels
 
 def getPretrainedEmbeddings(src):
@@ -98,6 +99,10 @@ def getPretrainedEmbeddings(src):
 def main():
 	preprocessing = PreProcessing()
 
+	buckets = {  0:{'max_input_seq_length':39 } } # 40-1=39
+	print buckets
+	print "==================================================="
+
 	train_sequences = preprocessing.loadData(split='train')		
 	val_sequences = preprocessing.loadData(split='valid')		
 	test_sequences = preprocessing.loadData(split='test')		
@@ -109,6 +114,14 @@ def main():
 	val = preprocessing.prepareLMdata(val_sequences)
 	test = preprocessing.prepareLMdata(test_sequences)
 	#return
+
+	data,labels = train
+	print "--------- SAMPLE & shape..."
+	print "train data.shape ",data.shape
+	print "train labels.shape ",labels.shape
+	print "sameple:", data[0]
+	print "sample outputs: ",labels[0]
+	print "-------------------"
 	
 	# get model
 	params = {}
@@ -119,14 +132,8 @@ def main():
 	params['max_input_seq_length'] = config.MAX_SEQUENCE_LENGTH - 1 #inputs are all but last element, outputs are al but first element
 	params['batch_size'] = 20
 	params['pretrained_embeddings']=False
-	
-	#return
 	print params
-	buckets = {  0:{'max_input_seq_length':40, 'max_output_seq_length':19} }
-	#,1:{'max_input_seq_length':40,'max_output_seq_length':19}, 2:{'max_input_seq_length':40, 'max_output_seq_length':19} }
-	print buckets
-
-	return
+	
 	
 	# model
 	mode='train'
