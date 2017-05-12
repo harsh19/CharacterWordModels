@@ -84,9 +84,16 @@ class Solver:
 			cost = self.cost_list[bucket_num]
 
 			# Gradient descent
-			learning_rate=0.1
+			learning_rate=0.001
+                        beta1=0.9
+                        beta2=0.999
+                        epsilon=1e-08
+                        use_locking=False
+                        name='Adam'
 			batch_size=config['batch_size']
-			optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
+                        optimizer = tf.train.GradientDescentOptimizer(0.1).minimize(cost)
+
+			#optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate,beta1=beta1,beta2=beta2,epsilon=epsilon,use_locking=use_locking,name=name).minimize(cost)
 
 			sess = self.sess
 
