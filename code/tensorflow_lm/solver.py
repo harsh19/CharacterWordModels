@@ -86,14 +86,13 @@ class Solver:
 
 			# Gradient descent
 			learning_rate=0.001
-                        beta1=0.9
-                        beta2=0.999
-                        epsilon=1e-08
-                        use_locking=False
-                        name='Adam'
+			beta1=0.9
+			beta2=0.999
+			epsilon=1e-08
+			use_locking=False
+			name='Adam'
 			batch_size=config['batch_size']
-                        optimizer = tf.train.GradientDescentOptimizer(0.1).minimize(cost)
-
+			optimizer = tf.train.GradientDescentOptimizer(0.1).minimize(cost)
 			#optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate,beta1=beta1,beta2=beta2,epsilon=epsilon,use_locking=use_locking,name=name).minimize(cost)
 
 			sess = self.sess
@@ -114,8 +113,8 @@ class Solver:
 				#num_of_batches =  n/batch_size #(n+batch_size-1)/batch_size
 				num_of_batches =  (n+batch_size-1)/batch_size
 				for j in range(num_of_batches):
-                                        if j%100==0:
-                                                print "batch= ",j
+					if j%100==0:
+						print "batch= ",j
 					feed_dict_cur = {}
 					for k,v in feed_dct.items():
 						feed_dict_cur[k] = v[j*batch_size:min(n,(j+1)*batch_size)]

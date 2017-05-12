@@ -70,8 +70,23 @@ class PreProcessing:
 		ret = [ [ self.word_index[t] for t in text ] for text in ret ]
 		return ret
 
-	def loadData(self, split='train'):   
-		print "loading " ,split," data..."
+	def char_tokenizer(self, texts, special_tokens={'<unk>':'U'}):
+		global all_lengths
+		print texts[7]
+		for k,v in special_tokens.items():
+			texts = [  text.replace(k,v) for text in texts ]
+		print texts[7]
+		for text in texts:
+			for ch in text:
+				if ch not in self.word_index:
+					self.word_index[ch] = self.word_index_counter
+					self.word_index_counter+=1
+			all_lengths.append(len(text))
+		ret = [ [ self.word_index[t] for t in text ] for text in texts ]
+		return ret
+
+	def loadData(self, split='train', char_or_word="word"):   
+		print "-----------------loadData()--------- split= ",split
 		data_src = config.data_src + "." + split + ".txt"
 		texts=[]
 		if debug_mode:
@@ -84,17 +99,21 @@ class PreProcessing:
 						break
 		else:
 			texts = open(data_src,"r").readlines()
-		texts = [self.sent_start + " " + text + " " + self.sent_end for text in texts]
-		
-		sequences = self.tokenizer(texts)
-
-		word_index = self.word_index
-		#TO DO: add bucketing...
-		sequences = self.pad_sequences_my(sequences, maxlen=config.MAX_SEQUENCE_LENGTH)
-		
-		a=sequences
-		word_index[self.unknown_word]=0
+		if char_or_word=="word":
+			texts = [self.sent_start + " " + text + " " + self.sent_end for text in texts]
+			sequences = self.tokenizer(texts)
+			word_index = self.word_index
+			#TO DO: add bucketing...
+		else: # character
+			sequences = self.char_tokenizer(texts)
+			word_index = self.word_index			
+			sequences = [ [self.word_index[self.sent_start]] + sequence + [self.word_index[self.sent_end]] for sequence in sequences]
+			#TO DO: add bucketing...
+		sequences = self.pad_sequences_my(sequences, maxlen=config.MAX_SEQUENCE_LENGTH)	
+		#word_index[self.unknown_word]=0
 		print sequences[0]
+		print texts[0]
+		print "-----------------Done loadData()---------"
 		return sequences
 
 	def prepareLMdata(self, sequences):
@@ -107,10 +126,11 @@ class PreProcessing:
 		if debug_mode:
 			data = data[:192]
 			labels = labels[:192]
-                else:
-                        lim = 32 * (  len(data)/32 ) # TO DO: Add support for incomplete batch in the model or in solver
-                        data = data[:lim]
-                        labels = labels[:lim]
+		else:
+			batch_sz = config.batch_size
+			lim = batch_sz * (  len(data)/batch_sz ) # TO DO: Add support for incomplete batch in the model or in solver
+			data = data[:lim]
+			labels = labels[:lim]
 		return data,labels
 
 def getPretrainedEmbeddings(src):
@@ -129,7 +149,7 @@ def getPretrainedEmbeddings(src):
 def main():
 
 	# buckets
-	buckets = {  0:{'max_input_seq_length':39 } } # 40-1=39
+	buckets = {  0:{'max_input_seq_length': config.MAX_SEQUENCE_LENGTH-1 } } # 40-1=39
 	print buckets
 	print "==================================================="
 
@@ -140,16 +160,16 @@ def main():
 	params['max_input_seq_length'] = config.MAX_SEQUENCE_LENGTH - 1 #inputs are all but last element, outputs are al but first element
 	params['batch_size'] = config.batch_size
 	params['pretrained_embeddings']=False
-	params['char_or_word'] = "word"
+	params['char_or_word'] = config.char_or_word
 	params['use_tf'] = True
 	params['keep_prob'] = 1.0 - config.dropout_val
 	print params
 
 	preprocessing = PreProcessing(params)
 
-	train_sequences = preprocessing.loadData(split='train')		
-	val_sequences = preprocessing.loadData(split='valid')		
-	test_sequences = preprocessing.loadData(split='test')	
+	train_sequences = preprocessing.loadData(split='train', char_or_word=params['char_or_word'] )		
+	val_sequences = preprocessing.loadData(split='valid', char_or_word=params['char_or_word'] )
+	test_sequences = preprocessing.loadData(split='test', char_or_word=params['char_or_word'] )	
 	print preprocessing.word_index[preprocessing.sent_start]
 	print preprocessing.word_index[preprocessing.sent_end]
 	index_word = {i:w for w,i in preprocessing.word_index.items()}
