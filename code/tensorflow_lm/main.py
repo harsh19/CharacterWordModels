@@ -11,7 +11,7 @@ import solver
 import keras_models
 from keras.callbacks import ModelCheckpoint
 
-debug_mode = True
+debug_mode = False
 all_lengths = []
 
 class PreProcessing:
@@ -102,6 +102,10 @@ class PreProcessing:
 		if debug_mode:
 			data = data[:192]
 			labels = labels[:192]
+                else:
+                        lim = 32 * (  len(data)/32 ) # TO DO: Add support for incomplete batch in the model or in solver
+                        data = data[:lim]
+                        labels = labels[:lim]
 		return data,labels
 
 def getPretrainedEmbeddings(src):

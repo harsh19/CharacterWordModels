@@ -90,10 +90,10 @@ class Solver:
 
 			sess = self.sess
 
-			training_iters=5
+			training_iters=50
 			display_step=1
-			sample_step=3
-			save_step = 4
+			sample_step=2
+			save_step = 1
 			n = feed_dct[token_input_sequences_placeholder].shape[0]
 
 			# Launch the graph
@@ -106,7 +106,8 @@ class Solver:
 				#num_of_batches =  n/batch_size #(n+batch_size-1)/batch_size
 				num_of_batches =  (n+batch_size-1)/batch_size
 				for j in range(num_of_batches):
-					#print "j= ",j
+                                        if j%100==0:
+                                                print "batch= ",j
 					feed_dict_cur = {}
 					for k,v in feed_dct.items():
 						feed_dict_cur[k] = v[j*batch_size:min(n,(j+1)*batch_size)]
@@ -131,7 +132,7 @@ class Solver:
 					print np.sum(pred_cur[0],axis=1)
 					'''
 				if step%save_step==0:
-					save_path = saver.save(sess, "./tmp/model"+str(step)+".ckpt")
+					save_path = saver.save(sess, "./tmp/tf/model"+str(step)+".ckpt")
 	  				print "Model saved in file: ",save_path
 
 				step += 1
@@ -148,7 +149,7 @@ class Solver:
 			print "sess is None.. LOAD?ING SAVED MODEL"
 	  		sess = tf.Session()
 	  		saver = tf.train.Saver()
-	  		saver.restore(sess, "./tmp/model4.ckpt")
+	  		saver.restore(sess, "./tmp/tf/model4.ckpt")
 		model_obj = self.model_obj
 		end_index = 2 # TO_DO load this from config
 		feed_dct={self.decoder_inputs_preds:input_sequences}
