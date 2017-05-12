@@ -38,11 +38,12 @@ class Solver:
 			
 			# for predictions / sampler
 			bucket_num_for_preds = 0 # TO DO: creat separate input placeholder for this
+			config['keep_prob'] = 1.0 # keep 1.0 during test time
 			decoder_outputs_preds = self.model_obj.getDecoderModel(config, is_training=False, mode='training', reuse=True, bucket_num=bucket_num_for_preds)	
 			self.decoder_inputs_preds = self.token_input_sequences_placeholder_list[bucket_num_for_preds]
 			self.decoder_outputs_preds = decoder_outputs_preds
 		else:
-			pass # TODO
+			config['keep_prob'] = 1.0 # keep 1.0 during test time
 			decoder_outputs_preds = self.model_obj.getDecoderModel(config, is_training=False, mode='inference', reuse=reuse)	
 			self.decoder_inputs_preds = self.model_obj.token_input_sequences_placeholder_inference
 			self.decoder_outputs_preds = decoder_outputs_preds

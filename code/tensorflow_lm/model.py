@@ -60,7 +60,7 @@ class RNNModel:
 				token_emb_mat = tf.concat( [tf.zeros([1, embeddings_dim]), tf.slice(token_emb_mat, [1,0],[-1,-1]) ], axis=0 )	
 		return token_emb_mat
 
-	def _decoderRNN(self, x, params, reuse=False, mode='training'):
+	def _decoderRNN(self, x, params, reuse=False, mode='training', keep_prob=1.0):
 
 		lstm_cell = params['lstm_cell']
 		token_vocab_size = params['vocab_size']
@@ -86,14 +86,16 @@ class RNNModel:
 		w_out, b_out = self._getDecoderOutputVariables()
 
 		#unrolled lstm 
-		outputs = [] # h values at each time step
+		outputs = [] # h variablealu		emb_scope appendt each time step
 		state = initial_state
 		cell_output = state[1]
+		#print "mode, keep_prob = ", mode, keep_prob
 		with tf.variable_scope("RNN"):
 			pred = []
 			for time_step in range(num_steps):
 				if time_step > 0: tf.get_variable_scope().reuse_variables()
 				inputs_current_time_step = inputs[:, time_step, :]
+				inputs_current_time_step = tf.nn.dropout(inputs_current_time_step, keep_prob)
 				#print "state = ",state
 				(cell_output, state) = self._runDecoderStep(lstm_cell=lstm_cell, cur_inputs=inputs_current_time_step, reuse=(time_step!=0), state=state)
 				outputs.append(cell_output)
@@ -115,6 +117,7 @@ class RNNModel:
 		max_sentence_length = config['max_inp_seq_length']
 		embeddings_dim = config['embeddings_dim']
 		lstm_cell_size = config['lstm_cell_size']
+		keep_prob = config['keep_prob']
 
 		#placeholders
 		if mode=='training':
@@ -144,7 +147,7 @@ class RNNModel:
 				params={k:v for k,v in config.items()}
 				params['lstm_cell'] = lstm_cell 
 				inp = tf.nn.embedding_lookup(token_emb_mat, token_input_sequences_placeholder) 
-				pred = self._decoderRNN(inp, params, mode='inference')  # timesteps, N, vocab_size
+				pred = self._decoderRNN(inp, params, mode='inference', keep_prob=keep_prob)  # timesteps, N, vocab_size
 				pred = tf.unstack(pred)
 				pred = tf.stack( [ tf.nn.softmax(vals) for vals in pred ] ) # timesteps, N, vocab_size
 				return pred
@@ -152,7 +155,7 @@ class RNNModel:
 				params={k:v for k,v in config.items()}
 				params['lstm_cell'] = lstm_cell 
 				inp = tf.nn.embedding_lookup(token_emb_mat, token_input_sequences_placeholder) 
-				pred = self._decoderRNN(inp, params, mode='training')  # timesteps, N, vocab_size
+				pred = self._decoderRNN(inp, params, mode='training', keep_prob=keep_prob)  # timesteps, N, vocab_size
 				pred_for_loss = pred # since sparse_softmax_cross_entropy_with_logits takes softmax on its own as well
 				pred = tf.unstack(pred)
 				pred = tf.stack( [ tf.nn.softmax(vals) for vals in pred ] ) # timesteps, N, vocab_size

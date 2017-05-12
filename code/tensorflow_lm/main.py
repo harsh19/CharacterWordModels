@@ -10,8 +10,13 @@ import utilities
 import solver
 import keras_models
 from keras.callbacks import ModelCheckpoint
+import tensorflow as tf
 
-debug_mode = False
+# Set seed for reproducability
+tf.set_random_seed(1)
+
+
+debug_mode = True
 all_lengths = []
 
 class PreProcessing:
@@ -133,10 +138,11 @@ def main():
 	params['embeddings_dim'] =  config.embeddings_dim
 	params['lstm_cell_size'] = config.lstm_cell_size
 	params['max_input_seq_length'] = config.MAX_SEQUENCE_LENGTH - 1 #inputs are all but last element, outputs are al but first element
-	params['batch_size'] = 32
+	params['batch_size'] = config.batch_size
 	params['pretrained_embeddings']=False
 	params['char_or_word'] = "word"
 	params['use_tf'] = True
+	params['keep_prob'] = 1.0 - config.dropout_val
 	print params
 
 	preprocessing = PreProcessing(params)
