@@ -198,7 +198,8 @@ def main():
 	
 	if params['use_tf']:
 		# model
-		mode=  "train" #"inference" # 'train'
+		mode=  ["inference", "train"][0]
+		print "mode = ",mode
 		if mode=='train':
 			train_buckets = {}
 			for bucket,_ in enumerate(buckets):
@@ -211,12 +212,16 @@ def main():
 		else:
 			rnn_model = solver.Solver(buckets=None, mode='inference')
 			params['max_inp_seq_length'] = 39
+			params['saved_model_path'] = config.saved_model_path
 			_ = rnn_model.getModel(params, mode='inference', reuse=False, buckets=None)
-			print "----Running inference-----"
-			#rnn_model.runInference(params, val_encoder_inputs[:params['batch_size']], val_decoder_outputs[:params['batch_size']], preprocessing.index_word)
-			valx, valy = val
-			rnn_model.solveAll(params, valx, valy, preprocessing.index_word)
-
+			data_typ=["train","val"][1]
+			if data_typ=="val":
+				valx, valy = val
+			else:
+				valx, valy = train
+			dump_seq_prob=True
+			dump_seq_prob_path="./tmp/" + data_typ + "_groundtruth_probs.txt"
+			rnn_model.solveAll(params, valx, valy, preprocessing.index_word, sess=None, dump_seq_prob=dump_seq_prob, dump_seq_prob_path=dump_seq_prob_path)
 	else: #Keras
 		print "KERAS MODEL"
 

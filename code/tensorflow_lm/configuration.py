@@ -1,5 +1,6 @@
 
-char_or_word= "char"  #"word"
+char_or_word= ["word","char"][0]
+print "char_or_word = ",char_or_word
 max_word_seq_length = 40
 max_char_sequence_length = 200
 if char_or_word=="word":
@@ -14,3 +15,5 @@ dropout_val = 0.2
 lstm_cell_size=200
 data_src = "./data/ptb"
 #print "embeddings_dim = ", embeddings_dim
+
+saved_model_path = "./tmp/tf/model26.ckpt"

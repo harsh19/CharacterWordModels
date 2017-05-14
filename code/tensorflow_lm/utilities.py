@@ -270,3 +270,15 @@ def getPerplexityFromSumProbs(res, val_y, stop_on_finding=0): # res : batch_size
     pred = np.sum(pred) / np.sum(lengths)
     pred = np.power(np.e, -pred)
     return pred
+
+
+def getSequenceProbs(res, val_y, stop_on_finding=0): # res : batch_size.  val_y: batch_size * num_steps
+    lengths = np.zeros(res.shape[0])    
+    for b in range(res.shape[0]):
+        for s in range(val_y.shape[1]):
+            if val_y[b][s] == stop_on_finding:
+                lengths[b] = s
+                break
+            lengths[b] = s+1
+    pred = np.array(res)
+    return pred

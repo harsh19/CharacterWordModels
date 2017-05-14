@@ -156,7 +156,9 @@ class Solver:
 			print "sess is None.. LOAD?ING SAVED MODEL"
 	  		sess = tf.Session()
 	  		saver = tf.train.Saver()
-	  		saver.restore(sess, "./tmp/tf/model4.ckpt")
+	  		saved_model_path = config['saved_model_path']
+	  		print "Loading saved model from : ",saved_model_path
+	  		saver.restore(sess, saved_model_path)
 		model_obj = self.model_obj
 		end_index = 2 # TO_DO load this from config
 		feed_dct={self.decoder_inputs_preds:input_sequences}
@@ -164,7 +166,6 @@ class Solver:
 		preds =  self.decoder_outputs_preds
 		preds = np.array( sess.run(preds, feed_dict= feed_dct) ) # timesteps, N, vocab_size
 		timesteps, N, vocab_size = preds.shape
-		#print "preds.shape = ",preds.shape
 		assert N==batch_size
 		probs = np.zeros(batch_size)
 		for i in range(batch_size):
@@ -181,13 +182,17 @@ class Solver:
 
 	###################################################################################
 
-	def solveAll(self, config, input_sequences, output_sequences, reverse_vocab, sess=None): # Probabilities
+	def solveAll(self, config, input_sequences, output_sequences, reverse_vocab, sess=None, dump_seq_prob=False, dump_seq_prob_path=None): # Probabilities
 		print " SolveAll ...... ============================================================"
+		if sess==None:
+			print "sess is None.. LOAD?ING SAVED MODEL"
+	  		sess = tf.Session()
+	  		saver = tf.train.Saver()
+	  		saved_model_path = config['saved_model_path']
+	  		print "Loading saved model from : ",saved_model_path
+	  		saver.restore(sess, saved_model_path)
 		batch_size = config['batch_size']
 		num_batches = ( len(input_sequences) + batch_size - 1)/ batch_size 
-		#print "num_batches = ",num_batches
-		#print "batch_size = ",batch_size
-		#print "len(input_sequences) = ",len(input_sequences)
 		probs = []
 		for i in range(num_batches):
 			#print "i= ",i
@@ -202,12 +207,22 @@ class Solver:
 			cur_probs = self.runInference(config, cur_input_sequences, cur_output_sequences, reverse_vocab, sess=sess, print_all=False)
 			probs.extend( cur_probs[:lim] )
 		probs = np.array(probs)
-		#print "probs.shape: ",probs.shape
-		#print "probs[0:2] = ", probs[0:2]
-		#print len(input_sequences)
-		#print len(probs)
-		#print input_sequences[0], output_sequences[0], probs.shape
 		print "PREPLEXITY = ", utils.getPerplexityFromSumProbs(probs, output_sequences)
+		if dump_seq_prob:
+			prob_vals = utils.getSequenceProbs(probs, output_sequences)
+			print "Dumping values to path= ",dump_seq_prob_path
+			print "prob_vals.shape = ",prob_vals.shape
+			fw = open(dump_seq_prob_path,"w")
+			for gt_sequence,seq_prob in zip(output_sequences, prob_vals):
+				#print "gt_sequence = ",gt_sequence
+				#print "seq__prob = ",seq_prob
+				gt_str_seq = ""
+				for j in gt_sequence:
+					if j==0:
+						break
+					gt_str_seq = gt_str_seq + " " + reverse_vocab[j]
+				fw.write( gt_str_seq + "\t" + str(seq_prob) + "\n" )
+			fw.close()
 
 	###################################################################################
 
