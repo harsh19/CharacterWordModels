@@ -18,3 +18,4 @@ data_src = "./data/ptb"
 
 saved_model_path = None
 dumped_train_probs_path= "../tensorflow_lm/tmp/train_groundtruth_probs.txt" 
+#dumped_train_probs_path= "../tensorflow_lm/tmp/val_groundtruth_probs.txt" 
