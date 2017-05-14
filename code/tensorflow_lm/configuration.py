@@ -16,4 +16,4 @@ lstm_cell_size=200
 data_src = "./data/ptb"
 #print "embeddings_dim = ", embeddings_dim
 
-saved_model_path = "./tmp/tf/model26.ckpt"
+saved_model_path = "./tmp/tf/model49.ckpt"

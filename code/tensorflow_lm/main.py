@@ -16,7 +16,7 @@ import tensorflow as tf
 tf.set_random_seed(1)
 
 
-debug_mode = True
+debug_mode = False
 all_lengths = []
 
 class PreProcessing:
