@@ -15,7 +15,7 @@ import tensorflow as tf
 tf.set_random_seed(1)
 
 
-debug_mode = True
+debug_mode = False
 all_lengths = []
 
 class PreProcessing:
@@ -121,6 +121,10 @@ class PreProcessing:
 		ret = np.array(ret)
 		# change from log prob to prob
 		ret = np.exp(ret) # chance of underflow ??
+                #Added By Varun:Start
+                Z=np.sum(ret)
+                ret=ret/Z
+                #Added By Varun:End
 		return ret
 
 	def prepareLMdata(self, sequences):
@@ -188,7 +192,10 @@ def main():
 	
 	#Sanity check
 	trainx, trainy = train
-	assert train_weights.shape[0] == trainx.shape[0]
+	print train_weights.shape
+        print trainx.shape
+        if not debug_mode:
+                assert train_weights.shape[0] == trainx.shape[0]
 
 	# seq. length analysis
 	global all_lengths

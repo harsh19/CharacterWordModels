@@ -87,14 +87,14 @@ class Solver:
 			cost = self.cost_list[bucket_num]
 
 			# Gradient descent
-			learning_rate=0.001
+			learning_rate= 0.5  #0.001
 			beta1=0.9
 			beta2=0.999
 			epsilon=1e-08
 			use_locking=False
 			name='Adam'
 			batch_size=config['batch_size']
-			optimizer = tf.train.GradientDescentOptimizer(0.1).minimize(cost)
+			optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
 			#optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate,beta1=beta1,beta2=beta2,epsilon=epsilon,use_locking=use_locking,name=name).minimize(cost)
 
 			sess = self.sess
@@ -130,7 +130,7 @@ class Solver:
 
 				if step % display_step == 0:
 	  				val_x,val_y = val_feed_dct
-					self.getLoss(config, val_x, val_y, token_input_sequences_placeholder, token_output_sequences_placeholder, masker, loss_weights_placeholder ,cost, sess)
+					#self.getLoss(config, val_x, val_y, token_input_sequences_placeholder, token_output_sequences_placeholder, masker, loss_weights_placeholder ,cost, sess)
 	  				self.solveAll(config, val_x, val_y, reverse_vocab, sess)
 
 				if step % sample_step == 0:
@@ -141,7 +141,7 @@ class Solver:
 					print np.sum(pred_cur[0],axis=1)
 					'''
 				if step%save_step==0:
-					save_path = saver.save(sess, "./tmp/tf/model"+str(step)+".ckpt")
+					save_path = saver.save(sess, "./tmp/tf/model_higher_lr"+str(step)+".ckpt")
 	  				print "Model saved in file: ",save_path
 
 				step += 1
@@ -228,7 +228,7 @@ class Solver:
 
 	###################################################################################
 
-	def getLoss(self, config, input_sequences, output_sequences, inp_placeholder, out_placeholder, mask_placeholder, loss_weights_placeholder ,loss_variable, sess): # Probabilities
+	def getLoss(self, config, input_sequences, output_sequences, loss_weights, inp_placeholder, out_placeholder, mask_placeholder, loss_weights_placeholder ,loss_variable, sess): # Probabilities
 		print " getLoss ...... ============================================================"
 		batch_size = config['batch_size']
 		num_batches = ( len(input_sequences) + batch_size - 1)/ batch_size 
@@ -237,13 +237,15 @@ class Solver:
 			#print "i= ",i
 			cur_input_sequences = input_sequences[i*batch_size:(i+1)*batch_size]
 			cur_output_sequences = output_sequences[i*batch_size:(i+1)*batch_size]
+			cur_loss_weights = loss_weights[i*batch_size:(i+1)*batch_size]
 			lim = len(cur_input_sequences)
 			if len(cur_input_sequences)<batch_size:
 				gap = batch_size - len(encoder_inputs_cur)
 				for j in range(gap):
 					cur_output_sequences = np.vstack( (cur_output_sequences, cur_output_sequences[0]) )
 					cur_input_sequences = np.vstack( (cur_input_sequences, cur_input_sequences[0]) )
-			feed_dct = {inp_placeholder:cur_input_sequences, out_placeholder:cur_output_sequences}
+					cur_loss_weights = np.vstack( (cur_loss_weights, 0) )
+                        feed_dct = {inp_placeholder:cur_input_sequences, out_placeholder:cur_output_sequences, loss_weights_placeholder:cur_loss_weights}
 			mask = np.zeros(cur_output_sequences.shape, dtype=np.float)
 			x,y = np.nonzero(cur_output_sequences)
 			mask[x,y]=1

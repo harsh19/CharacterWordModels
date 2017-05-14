@@ -1,5 +1,5 @@
 
-char_or_word= ["word","char"][0]
+char_or_word= ["word","char"][1]
 print "char_or_word = ",char_or_word
 max_word_seq_length = 40
 max_char_sequence_length = 200
