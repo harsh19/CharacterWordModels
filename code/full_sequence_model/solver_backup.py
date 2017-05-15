@@ -19,17 +19,9 @@ class Solver:
 		self.buckets = buckets 
 		self.preds = []
 		self.cost_list = []
-		self.optimizer_list = []
 		self.mask_list = []
 		self.token_input_sequences_placeholder_list = []
 		self.token_output_sequences_placeholder_list = []
-
-		optimizer_typ = "sgd" #"adam"
-		if "optimizer_typ" in config:
-			optimizer_typ = config['optimizer_typ']
-		self.optimizer_typ = optimizer_typ
-		learning_rate= 0.5 #0.001
-		print "optimizer_typ, learning_rate= ", optimizer_typ, learning_rate
 
 		if mode=='train':
 			for bucket_num, bucket_dct in self.buckets.items():
@@ -38,17 +30,7 @@ class Solver:
 				print "------------------------------------------------------------------------------------------------------------------------------------------- "
 				pred = self.model_obj.getDecoderModel(config, is_training=True, mode='training', reuse=reuse, bucket_num=bucket_num)
 				self.preds.append(pred)
-				cost = self.model_obj.cost
-				self.cost_list.append(cost)
-				if self.optimizer_typ=="sgd":
-					optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
-					train_op = optimizer
-				else: # adam
-					optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-					grads = tf.gradients(cost, tf.trainable_variables())
-					grads_and_vars = list(zip(grads, tf.trainable_variables()))
-					train_op = optimizer.apply_gradients(grads_and_vars=grads_and_vars)
-				self.optimizer_list.append(train_op)
+				self.cost_list.append( self.model_obj.cost )
 				reuse=True
 			self.token_input_sequences_placeholder_list  = self.model_obj.token_input_sequences_placeholder_list
 			self.token_output_sequences_placeholder_list = self.model_obj.token_output_sequences_placeholder_list
@@ -68,7 +50,7 @@ class Solver:
 			self.decoder_outputs_preds = decoder_outputs_preds
 			
 	def trainModel(self, config, train_feed_dict, val_feed_dct, reverse_vocab, do_init=True):
-
+		
 		# Initializing the variables
 		if do_init:
 			init = tf.global_variables_initializer()
@@ -104,11 +86,19 @@ class Solver:
 			masker = self.mask_list[bucket_num]
 			cost = self.cost_list[bucket_num]
 
-			train_op = self.optimizer_list[bucket_num]
-			
+			# Gradient descent
+			learning_rate= 2.5  #0.001
+			beta1=0.9
+			beta2=0.999
+			epsilon=1e-08
+			use_locking=False
+			name='Adam'
+			batch_size=config['batch_size']
+			optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
+			#optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate,beta1=beta1,beta2=beta2,epsilon=epsilon,use_locking=use_locking,name=name).minimize(cost)
+
 			sess = self.sess
 
-			batch_size=config['batch_size']
 			training_iters=50
 			display_step=1
 			sample_step=2
@@ -136,7 +126,7 @@ class Solver:
 					mask = np.zeros(cur_out.shape, dtype=np.float)
 					mask[x,y]=1
 					feed_dict_cur[masker] = mask
-					sess.run(train_op, feed_dict=feed_dict_cur )
+					sess.run(optimizer, feed_dict=feed_dict_cur )
 
 				if step % display_step == 0:
 	  				val_x,val_y = val_feed_dct
@@ -151,7 +141,7 @@ class Solver:
 					print np.sum(pred_cur[0],axis=1)
 					'''
 				if step%save_step==0:
-					save_path = saver.save(sess, "./tmp/tf/model_sgd_WordToWord"+str(step)+".ckpt")
+					save_path = saver.save(sess, "./tmp/tf/model_higherMost_lr"+str(step)+".ckpt")
 	  				print "Model saved in file: ",save_path
 
 				step += 1
@@ -255,7 +245,7 @@ class Solver:
 					cur_output_sequences = np.vstack( (cur_output_sequences, cur_output_sequences[0]) )
 					cur_input_sequences = np.vstack( (cur_input_sequences, cur_input_sequences[0]) )
 					cur_loss_weights = np.vstack( (cur_loss_weights, 0) )
-			feed_dct = {inp_placeholder:cur_input_sequences, out_placeholder:cur_output_sequences, loss_weights_placeholder:cur_loss_weights}
+                        feed_dct = {inp_placeholder:cur_input_sequences, out_placeholder:cur_output_sequences, loss_weights_placeholder:cur_loss_weights}
 			mask = np.zeros(cur_output_sequences.shape, dtype=np.float)
 			x,y = np.nonzero(cur_output_sequences)
 			mask[x,y]=1

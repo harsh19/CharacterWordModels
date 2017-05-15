@@ -15,7 +15,7 @@ import tensorflow as tf
 tf.set_random_seed(1)
 
 
-debug_mode = False
+debug_mode = True
 all_lengths = []
 
 class PreProcessing:
@@ -115,16 +115,27 @@ class PreProcessing:
 		print "-----------------Done loadData()---------"
 		return sequences
 
+        def normalizeAndExpVals(self, vals):
+            # e^x[i] / sum(e^x[j])
+            maxval = np.max(vals)
+            print "maxval = ",maxval
+            vals = vals - maxval
+            vals = np.exp(vals)
+            return vals/sum(vals)
+
 	def loadTeacherProbValuesForTrain(self, src=config.dumped_train_probs_path):
 		data = open(src,"r").readlines()
 		ret = [ float(row.strip().split('\t')[1]) for row in data ]
 		ret = np.array(ret)
 		# change from log prob to prob
-		ret = np.exp(ret) # chance of underflow ??
+		## ret = np.exp(ret) # chance of underflow ??
                 #Added By Varun:Start
+                ret=np.exp(ret)
                 Z=np.sum(ret)
                 ret=ret/Z
                 #Added By Varun:End
+                #ret = self.normalizeAndExpVals(ret)
+                #print "First 10 values after normalization : ",ret[:10]
 		return ret
 
 	def prepareLMdata(self, sequences):
