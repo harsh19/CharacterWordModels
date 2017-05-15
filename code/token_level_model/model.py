@@ -13,14 +13,12 @@ class RNNModel:
 		if mode=='training':
 			self.token_input_sequences_placeholder_list = []
 			self.masker_list = []
-			self.weight_list = []
 			self.token_output_sequences_placeholder_list = []
 
 			for bucket_num, bucket in buckets_dict.items():
 				max_input_seq_length = bucket['max_input_seq_length']
 				self.token_input_sequences_placeholder_list.append( tf.placeholder("int32", [None, max_input_seq_length], name="token_input_sequences"+str(bucket_num))  )# token_lookup_sequences
 				self.masker_list.append( tf.placeholder("float32", [None, max_input_seq_length], name="masker"+str(bucket_num)) )
-				self.weight_list.append( tf.placeholder("float32", [None], name="weight"+str(bucket_num)) )
 				self.token_output_sequences_placeholder_list.append( tf.placeholder("int32", [None, max_input_seq_length], name="token_output_sequences_placeholder"+str(bucket_num)) )
 		else:
 			self.token_input_sequences_placeholder_inference = tf.placeholder("int32", [None, max_input_seq_length_inference], name="token_input_sequences_inference")		
@@ -86,6 +84,8 @@ class RNNModel:
 		#decoder output variable
 		self._initDecoderOutputVariables(lstm_cell_size, token_vocab_size)
 		w_out, b_out = self._getDecoderOutputVariables()
+		self.w_out = w_out
+		self.b_out = b_out
 
 		#unrolled lstm 
 		outputs = [] # h variablealu		emb_scope appendt each time step
@@ -110,6 +110,33 @@ class RNNModel:
 
 	#################################################################################################################
 
+	def getSampler(self, config, is_first_step=True, reuse=True):
+		if is_first_step:
+			batch_size = config['batch_size']
+			cell = self.lstm_cell
+			init_state = self._getInitialState(cell, batch_size )
+			return init_state
+		else:
+			batch_size = config['batch_size']
+			cell_size = config['lstm_cell_size'] # should be same as used during model building
+			cell = self.lstm_cell
+			token_emb_mat = self.decoder_token_emb_mat
+			token_input_sequences_placeholder_sampler = tf.placeholder("int32", [None, 1], name="token_input_sequences_placeholder_sampler")		
+			c_prev = tf.placeholder("float32", [None, cell_size], name="c_prev")		
+			h_prev = tf.placeholder("float32", [None, cell_size], name="h_prev")
+			inp = tf.nn.embedding_lookup(token_emb_mat, token_input_sequences_placeholder_sampler)  # None, 1, embedding_dim
+			w_out, b_out = self.w_out, self.b_out
+			## inp = tf.squeeze( inp, axis=[1] ) # N?one, embedding_dim
+			inp = inp[:, 0, :] # None, embedding_dim
+			print "inp = ",inp
+			scope_name = "decoder/RNN"
+			state = (c_prev, h_prev)
+			with tf.variable_scope(scope_name,reuse=reuse):
+				(h_next, c_next) = self._runDecoderStep(lstm_cell=cell, cur_inputs=inp, state=state)
+			cur_pred = self._getDecoderOutput(h_next, w_out, b_out) # None, vocab_size
+			cur_pred = tf.nn.softmax( cur_pred )
+			return c_prev, h_prev, token_input_sequences_placeholder_sampler, c_next, h_next, cur_pred
+
 
 	def getDecoderModel(self, config, is_training=False, mode='training', reuse=False, bucket_num=0 ):
 
@@ -125,7 +152,6 @@ class RNNModel:
 		if mode=='training':
 			token_input_sequences_placeholder = self.token_input_sequences_placeholder_list[bucket_num]
 			masker = self.masker_list[bucket_num]
-			loss_weights = self.weight_list[bucket_num]
 			token_output_sequences_placeholder = self.token_output_sequences_placeholder_list[bucket_num]
 		else:
 			token_input_sequences_placeholder = self.token_input_sequences_placeholder_inference
@@ -165,13 +191,16 @@ class RNNModel:
 
 				if is_training:
 					pred_masked = pred_for_loss 
+					#tf.multiply( tf.expand_dims(tf.transpose(masker),2), pred)  # after transpose and expand, masker becomes (4,20,1) : timesteps,N,1. so pred_masked is timesteps,N,vocab_size
+					
+					#print "pred_masked .shape : ",pred_masked.shape
 					pred_masked = tf.transpose( pred_masked , [1,0,2] ) # N, timesteps, vocabsize
 					cost = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=pred_masked, labels=token_output_sequences_placeholder) # token_output_sequences_placeholder is N,timesteps. cost will be N, timesteps
 					cost = tf.multiply(cost, masker)  # both masker and cost is N,timesteps. 
 
-					loss_weights = tf.expand_dims(loss_weights,1) # change from None to None,1
-					cost = tf.multiply(cost, loss_weights) # broadcasting will take care. Result would be None, time_steps
-
+					#masker = tf.reshape(masks, (-1))
+					#cost = losses * masks
+					#print "cost.shape: " ,cost.shape
 					cost = tf.reduce_sum(cost) # N
 					masker_sum = tf.reduce_sum(masker) # N
 					cost = tf.divide(cost, masker_sum) # N

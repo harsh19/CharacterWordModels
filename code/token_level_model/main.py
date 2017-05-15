@@ -8,7 +8,6 @@ import pickle
 import utilities as datasets
 import utilities
 import solver
-from keras.callbacks import ModelCheckpoint
 import tensorflow as tf
 
 # Set seed for reproducability
@@ -115,28 +114,6 @@ class PreProcessing:
 		print "-----------------Done loadData()---------"
 		return sequences
 
-        def normalizeAndExpVals(self, vals):
-            # e^x[i] / sum(e^x[j])
-            maxval = np.max(vals)
-            print "maxval = ",maxval
-            vals = vals - maxval
-            vals = np.exp(vals)
-            return vals/sum(vals)
-
-	def loadTeacherProbValuesForTrain(self, src=config.dumped_train_probs_path):
-		data = open(src,"r").readlines()
-		ret = [ float(row.strip().split('\t')[1]) for row in data ]
-		ret = np.array(ret)
-		# change from log prob to prob
-		## ret = np.exp(ret) # chance of underflow ??
-                #Added By Varun:Start
-                ret=np.exp(ret)
-                Z=np.sum(ret)
-                ret=ret/Z
-                #Added By Varun:End
-                #ret = self.normalizeAndExpVals(ret)
-                #print "First 10 values after normalization : ",ret[:10]
-		return ret
 
 	def prepareLMdata(self, sequences):
 		data = np.array( [ sequence[:-1] for sequence in sequences ] )
@@ -199,14 +176,9 @@ def main():
 	train = preprocessing.prepareLMdata(train_sequences)
 	val = preprocessing.prepareLMdata(val_sequences)
 	test = preprocessing.prepareLMdata(test_sequences)
-	train_weights = preprocessing.loadTeacherProbValuesForTrain() # the function will pick the default path from config
+	#train_weights = preprocessing.loadTeacherProbValuesForTrain() # the function will pick the default path from config
 	
-	#Sanity check
 	trainx, trainy = train
-	print train_weights.shape
-        print trainx.shape
-        if not debug_mode:
-                assert train_weights.shape[0] == trainx.shape[0]
 
 	# seq. length analysis
 	global all_lengths
@@ -227,11 +199,11 @@ def main():
 	
 	if params['use_tf']:
 		# model
-		mode=  ["inference", "train"][1]
+		mode=  ["inference", "train", "sample"][2]
 		print "mode = ",mode
 		if mode=='train':
 			train_buckets = {}
-			train = data, labels, train_weights
+			train = data, labels
 			for bucket,_ in enumerate(buckets):
 				train_buckets[bucket] = train
 
@@ -239,19 +211,25 @@ def main():
 			_ = rnn_model.getModel(params, mode='train',reuse=False, buckets=buckets)
 			rnn_model.trainModel(config=params, train_feed_dict=train_buckets, val_feed_dct=val, reverse_vocab=preprocessing.index_word, do_init=True)
 		
-		else:
+		else: # inference, sample
 			rnn_model = solver.Solver(buckets=None, mode='inference')
 			params['max_inp_seq_length'] = 39
 			params['saved_model_path'] = config.saved_model_path
 			_ = rnn_model.getModel(params, mode='inference', reuse=False, buckets=None)
-			data_typ=["train","val"][1]
-			if data_typ=="val":
-				valx, valy = val
+
+			if mode == 'inference':
+				data_typ=["train","val"][1]
+				if data_typ=="val":
+					valx, valy = val
+				else:
+					valx, valy = train
+				dump_seq_prob=True
+				dump_seq_prob_path="./tmp/" + data_typ + "_groundtruth_probs.txt"
+				rnn_model.solveAll(params, valx, valy, preprocessing.index_word, sess=None, dump_seq_prob=dump_seq_prob, dump_seq_prob_path=dump_seq_prob_path)
 			else:
-				valx, valy = train
-			dump_seq_prob=True
-			dump_seq_prob_path="./tmp/" + data_typ + "_groundtruth_probs.txt"
-			rnn_model.solveAll(params, valx, valy, preprocessing.index_word, sess=None, dump_seq_prob=dump_seq_prob, dump_seq_prob_path=dump_seq_prob_path)
+				sample_output_path="./tmp/samples.txt"
+				rnn_model.sample(params, preprocessing.index_word, sample_output_path, None)
+
 	else: #Keras
 		print "KERAS MODEL"
 

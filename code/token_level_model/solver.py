@@ -19,17 +19,9 @@ class Solver:
 		self.buckets = buckets 
 		self.preds = []
 		self.cost_list = []
-		self.optimizer_list = []
 		self.mask_list = []
 		self.token_input_sequences_placeholder_list = []
 		self.token_output_sequences_placeholder_list = []
-
-		optimizer_typ = "sgd" #"adam"
-		if "optimizer_typ" in config:
-			optimizer_typ = config['optimizer_typ']
-		self.optimizer_typ = optimizer_typ
-		learning_rate= 0.5 #0.001
-		print "optimizer_typ, learning_rate= ", optimizer_typ, learning_rate
 
 		if mode=='train':
 			for bucket_num, bucket_dct in self.buckets.items():
@@ -38,22 +30,11 @@ class Solver:
 				print "------------------------------------------------------------------------------------------------------------------------------------------- "
 				pred = self.model_obj.getDecoderModel(config, is_training=True, mode='training', reuse=reuse, bucket_num=bucket_num)
 				self.preds.append(pred)
-				cost = self.model_obj.cost
-				self.cost_list.append(cost)
-				if self.optimizer_typ=="sgd":
-					optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
-					train_op = optimizer
-				else: # adam
-					optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-					grads = tf.gradients(cost, tf.trainable_variables())
-					grads_and_vars = list(zip(grads, tf.trainable_variables()))
-					train_op = optimizer.apply_gradients(grads_and_vars=grads_and_vars)
-				self.optimizer_list.append(train_op)
+				self.cost_list.append( self.model_obj.cost )
 				reuse=True
 			self.token_input_sequences_placeholder_list  = self.model_obj.token_input_sequences_placeholder_list
 			self.token_output_sequences_placeholder_list = self.model_obj.token_output_sequences_placeholder_list
 			self.mask_list = self.model_obj.masker_list
-			self.weight_list = self.model_obj.weight_list
 			
 			# for predictions / sampler
 			bucket_num_for_preds = 0 # TO DO: creat separate input placeholder for this
@@ -68,7 +49,7 @@ class Solver:
 			self.decoder_outputs_preds = decoder_outputs_preds
 			
 	def trainModel(self, config, train_feed_dict, val_feed_dct, reverse_vocab, do_init=True):
-
+		
 		# Initializing the variables
 		if do_init:
 			init = tf.global_variables_initializer()
@@ -85,7 +66,7 @@ class Solver:
 
 
 		for bucket_num,bucket in enumerate(self.buckets): # move training_iters loop before this
-			input_sequences, output_sequences, train_loss_weights = train_feed_dict[bucket_num]
+			input_sequences, output_sequences = train_feed_dict[bucket_num]
 			print "input_sequences[0] = ", input_sequences[0]
 			print "output_sequences[0] = ", output_sequences[0]
 			#cost = self.model_obj.cost
@@ -97,19 +78,26 @@ class Solver:
 			#create temporary feed dictionary
 			token_input_sequences_placeholder = self.token_input_sequences_placeholder_list[bucket_num]
 			token_output_sequences_placeholder = self.token_output_sequences_placeholder_list[bucket_num]
-			loss_weights_placeholder = self.weight_list[bucket_num]
-			feed_dct={token_input_sequences_placeholder:input_sequences, token_output_sequences_placeholder:output_sequences, loss_weights_placeholder:train_loss_weights }
+			feed_dct={token_input_sequences_placeholder:input_sequences, token_output_sequences_placeholder:output_sequences }
 
 			pred = self.preds[bucket_num]
 			masker = self.mask_list[bucket_num]
 			cost = self.cost_list[bucket_num]
 
-			train_op = self.optimizer_list[bucket_num]
-			
+			# Gradient descent
+			learning_rate=0.001
+			beta1=0.9
+			beta2=0.999
+			epsilon=1e-08
+			use_locking=False
+			name='Adam'
+			batch_size=config['batch_size']
+			optimizer = tf.train.GradientDescentOptimizer(0.1).minimize(cost)
+			#optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate,beta1=beta1,beta2=beta2,epsilon=epsilon,use_locking=use_locking,name=name).minimize(cost)
+
 			sess = self.sess
 
-			batch_size=config['batch_size']
-			training_iters=50
+			training_iters=3
 			display_step=1
 			sample_step=2
 			save_step = 1
@@ -135,12 +123,12 @@ class Solver:
 					x,y = np.nonzero(cur_out)
 					mask = np.zeros(cur_out.shape, dtype=np.float)
 					mask[x,y]=1
-					feed_dict_cur[masker] = mask
-					sess.run(train_op, feed_dict=feed_dict_cur )
+					feed_dict_cur[masker]=mask
+					sess.run(optimizer, feed_dict=feed_dict_cur )
 
 				if step % display_step == 0:
 	  				val_x,val_y = val_feed_dct
-					#self.getLoss(config, val_x, val_y, token_input_sequences_placeholder, token_output_sequences_placeholder, masker, loss_weights_placeholder ,cost, sess)
+					self.getLoss(config, val_x, val_y, token_input_sequences_placeholder, token_output_sequences_placeholder, masker, cost, sess)
 	  				self.solveAll(config, val_x, val_y, reverse_vocab, sess)
 
 				if step % sample_step == 0:
@@ -151,7 +139,7 @@ class Solver:
 					print np.sum(pred_cur[0],axis=1)
 					'''
 				if step%save_step==0:
-					save_path = saver.save(sess, "./tmp/tf/model_sgd_WordToWord"+str(step)+".ckpt")
+					save_path = saver.save(sess, "./tmp/tf/model"+str(step)+".ckpt")
 	  				print "Model saved in file: ",save_path
 
 				step += 1
@@ -238,7 +226,7 @@ class Solver:
 
 	###################################################################################
 
-	def getLoss(self, config, input_sequences, output_sequences, loss_weights, inp_placeholder, out_placeholder, mask_placeholder, loss_weights_placeholder ,loss_variable, sess): # Probabilities
+	def getLoss(self, config, input_sequences, output_sequences, inp_placeholder, out_placeholder, mask_placeholder,  loss_variable, sess): # Probabilities
 		print " getLoss ...... ============================================================"
 		batch_size = config['batch_size']
 		num_batches = ( len(input_sequences) + batch_size - 1)/ batch_size 
@@ -247,15 +235,13 @@ class Solver:
 			#print "i= ",i
 			cur_input_sequences = input_sequences[i*batch_size:(i+1)*batch_size]
 			cur_output_sequences = output_sequences[i*batch_size:(i+1)*batch_size]
-			cur_loss_weights = loss_weights[i*batch_size:(i+1)*batch_size]
 			lim = len(cur_input_sequences)
 			if len(cur_input_sequences)<batch_size:
 				gap = batch_size - len(encoder_inputs_cur)
 				for j in range(gap):
 					cur_output_sequences = np.vstack( (cur_output_sequences, cur_output_sequences[0]) )
 					cur_input_sequences = np.vstack( (cur_input_sequences, cur_input_sequences[0]) )
-					cur_loss_weights = np.vstack( (cur_loss_weights, 0) )
-			feed_dct = {inp_placeholder:cur_input_sequences, out_placeholder:cur_output_sequences, loss_weights_placeholder:cur_loss_weights}
+			feed_dct = {inp_placeholder:cur_input_sequences, out_placeholder:cur_output_sequences}
 			mask = np.zeros(cur_output_sequences.shape, dtype=np.float)
 			x,y = np.nonzero(cur_output_sequences)
 			mask[x,y]=1
@@ -266,4 +252,46 @@ class Solver:
 		print "LOSS = ", np.mean(loss)
 
 
-########################################################################################
+	########################################################################################
+
+	def getPredictions(self, outputs):
+		return np.argmax(outputs, axis=1)
+
+	def sample(self, config, reverse_vocab, dump_path, sess=None): # Sample
+		print " SAMPLE ============================================================"
+
+		if sess==None:
+			print "sess is None.. LOAD?ING SAVED MODEL"
+	  		sess = tf.Session()
+	  		saver = tf.train.Saver()
+	  		saved_model_path = config['saved_model_path']
+	  		print "Loading saved model from : ",saved_model_path
+	  		saver.restore(sess, saved_model_path)
+
+		model_obj = self.model_obj
+		c0, h0 = model_obj.getSampler(config=config, is_first_step=True, reuse=True)
+		c_prev_placeholder, h_prev_placeholder, inp_placeholder, cnext, hnext, output_dist = model_obj.getSampler(config=config, is_first_step=False, reuse=True)
+
+		end_symbol_idx = 2 #TO DO: load from config
+		start_symbol_idx = 1 #TO DO: load from config
+		max_input_seq_length = config['max_input_seq_length'] # can be different from training time
+		batch_size = config['batch_size']
+		inp = np.zeros( (batch_size,1) )
+		for i in range(batch_size): inp[i] = start_symbol_idx
+		outputs = []
+
+		#return 
+		state = sess.run([c0,h0], feed_dict={})
+		for i in range(max_input_seq_length):
+			print "i = ",i
+			c,h = state # since returned satte is a tuple
+			feed_dict = {c_prev_placeholder:c, h_prev_placeholder:h, inp_placeholder:inp }
+			state,h,output = sess.run( [cnext, hnext, output_dist], feed_dict=feed_dict )
+			# output is batch_size, vocab_size
+			predictions = self.getPredictions(output)
+			outputs.append(predictions)
+			inp = predictions.reshape([-1,1])
+
+		print outputs
+
+	###################################################################################

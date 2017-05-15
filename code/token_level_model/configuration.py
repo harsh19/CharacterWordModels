@@ -1,5 +1,5 @@
 
-char_or_word= ["word","char"][1]
+char_or_word= ["word","char"][0]
 print "char_or_word = ",char_or_word
 max_word_seq_length = 40
 max_char_sequence_length = 200
@@ -16,6 +16,4 @@ lstm_cell_size=200
 data_src = "./data/ptb"
 #print "embeddings_dim = ", embeddings_dim
 
-saved_model_path = None
-dumped_train_probs_path= "../tensorflow_lm/tmp/train_groundtruth_probs.txt" 
-#dumped_train_probs_path= "../tensorflow_lm/tmp/val_groundtruth_probs.txt" 
+saved_model_path = "./tmp/tf/model2.ckpt"
