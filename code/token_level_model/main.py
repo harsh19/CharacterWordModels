@@ -14,7 +14,7 @@ import tensorflow as tf
 tf.set_random_seed(1)
 
 
-debug_mode = True
+debug_mode = False
 all_lengths = []
 
 class PreProcessing:
@@ -199,7 +199,7 @@ def main():
 	
 	if params['use_tf']:
 		# model
-		mode=  ["inference", "train", "sample"][2]
+		mode=  ["inference", "train", "sample"][1]
 		print "mode = ",mode
 		if mode=='train':
 			train_buckets = {}

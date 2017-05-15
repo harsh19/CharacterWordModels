@@ -5,7 +5,8 @@ from utilities import OutputSentence, TopN
 import utilities
 import utilities as utils
 import model
-	
+import random
+
 class Solver:
 
 	def __init__(self, buckets=None, mode='training'):
@@ -97,7 +98,7 @@ class Solver:
 
 			sess = self.sess
 
-			training_iters=3
+			training_iters=50
 			display_step=1
 			sample_step=2
 			save_step = 1
@@ -254,10 +255,22 @@ class Solver:
 
 	########################################################################################
 
-	def getPredictions(self, outputs):
-		return np.argmax(outputs, axis=1)
+        def sampleFromDistribution(self,vals):
+                # TO DO: Add support when sum of vals is not 1.
+                # TO DO add suppport considering only top k
+                p = random.random()
+                s=0.0
+                for i,v in enumerate(vals):
+                    s+=v
+                    if s>=p:
+                        return i
+                return len(vals)-1
 
-	def sample(self, config, reverse_vocab, dump_path, sess=None): # Sample
+	def getPredictions(self, outputs):
+		return np.array( [self.sampleFromDistribution(output) for output in outputs ] )
+                #return np.argmax(outputs, axis=1)
+
+	def sample(self, config, reverse_vocab, dump_path, sess=None, batches=100): # Sample
 		print " SAMPLE ============================================================"
 
 		if sess==None:
@@ -276,22 +289,37 @@ class Solver:
 		start_symbol_idx = 1 #TO DO: load from config
 		max_input_seq_length = config['max_input_seq_length'] # can be different from training time
 		batch_size = config['batch_size']
-		inp = np.zeros( (batch_size,1) )
-		for i in range(batch_size): inp[i] = start_symbol_idx
-		outputs = []
 
-		#return 
-		state = sess.run([c0,h0], feed_dict={})
-		for i in range(max_input_seq_length):
-			print "i = ",i
-			c,h = state # since returned satte is a tuple
-			feed_dict = {c_prev_placeholder:c, h_prev_placeholder:h, inp_placeholder:inp }
-			state,h,output = sess.run( [cnext, hnext, output_dist], feed_dict=feed_dict )
-			# output is batch_size, vocab_size
-			predictions = self.getPredictions(output)
-			outputs.append(predictions)
-			inp = predictions.reshape([-1,1])
+                fw = open(dump_path,"w")
+                for batch in range(batches):
+                    inp = np.zeros( (batch_size,1) )
+                    for i in range(batch_size): inp[i] = start_symbol_idx
+                    outputs = []
 
-		print outputs
+                    #return 
+                    state = sess.run([c0,h0], feed_dict={})
+                    for i in range(max_input_seq_length):
+                            print "i = ",i
+                            c,h = state # since returned satte is a tuple
+                            feed_dict = {c_prev_placeholder:c, h_prev_placeholder:h, inp_placeholder:inp }
+                            state,h,output = sess.run( [cnext, hnext, output_dist], feed_dict=feed_dict )
+                            # output is batch_size, vocab_size
+                            predictions = self.getPredictions(output) # batch_size, 1
+                            outputs.append(predictions)
+                            inp = predictions.reshape([-1,1])
+                    # outputs is time_steps x batch_size
+                    outputs = np.array(outputs)
+                    print "outputs.shaoe = ", outputs.shape
+                    text_outputs = []
+                    for i in range(batch_size):
+                        text_outputs.append("")
+                    for timestep_data in outputs:
+                        for i,prediction_i in enumerate(timestep_data):
+                            if prediction_i!=end_symbol_idx:
+                                text_outputs[i] += " " + reverse_vocab[prediction_i]
+                    for sent in text_outputs:
+                        fw.write(sent)
+                        fw.write("\n")
+                fw.close()
 
 	###################################################################################
