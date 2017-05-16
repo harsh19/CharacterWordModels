@@ -270,7 +270,7 @@ class Solver:
 		return np.array( [self.sampleFromDistribution(output) for output in outputs ] )
                 #return np.argmax(outputs, axis=1)
 
-	def sample(self, config, reverse_vocab, dump_path, sess=None, batches=100): # Sample
+	def sample(self, config, reverse_vocab, dump_path, sess=None, batches=1): # Sample
 		print " SAMPLE ============================================================"
 
 		if sess==None:

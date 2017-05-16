@@ -58,6 +58,7 @@ class PreProcessing:
 
 	def tokenizer(self, texts):
 		global all_lengths
+		ret = [ text.replace("<unk>","unk") for text in texts ]
 		ret = [ word_tokenize(text.lower()) for text in texts ]
 		for text in ret:
 			for token in text:
@@ -199,7 +200,7 @@ def main():
 	
 	if params['use_tf']:
 		# model
-		mode=  ["inference", "train", "sample"][1]
+		mode=  ["inference", "train", "sample"][2]
 		print "mode = ",mode
 		if mode=='train':
 			train_buckets = {}
