@@ -14,7 +14,7 @@ import tensorflow as tf
 tf.set_random_seed(1)
 
 
-debug_mode = False
+debug_mode = True
 all_lengths = []
 
 class PreProcessing:
@@ -58,7 +58,9 @@ class PreProcessing:
 
 	def tokenizer(self, texts):
 		global all_lengths
-		ret = [ text.replace("<unk>","unk") for text in texts ]
+		#print "texts[1] = ",texts[1]
+		texts = [ text.replace("<unk>","unk") for text in texts ]
+		#print "texts[1] = ",texts[1]
 		ret = [ word_tokenize(text.lower()) for text in texts ]
 		for text in ret:
 			for token in text:
@@ -110,8 +112,8 @@ class PreProcessing:
 			#TO DO: add bucketing...
 		sequences = self.pad_sequences_my(sequences, maxlen=config.MAX_SEQUENCE_LENGTH)	
 		#word_index[self.unknown_word]=0
-		print sequences[0]
-		print texts[0]
+		print sequences[1]
+		print texts[1]
 		print "-----------------Done loadData()---------"
 		return sequences
 
@@ -194,13 +196,13 @@ def main():
 	print "--------- SAMPLE & shape..."
 	print "train data.shape ",data.shape
 	print "train labels.shape ",labels.shape
-	print "sameple:", data[0]
-	print "sample outputs: ",labels[0]
+	print "sameple:", data[1]
+	print "sample outputs: ",labels[1]
 	print "-------------------"
 	
 	if params['use_tf']:
 		# model
-		mode=  ["inference", "train", "sample"][2]
+		mode=  ["inference", "train", "sample"][1]
 		print "mode = ",mode
 		if mode=='train':
 			train_buckets = {}
