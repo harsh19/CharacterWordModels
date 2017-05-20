@@ -20,9 +20,17 @@ class Solver:
 		self.buckets = buckets 
 		self.preds = []
 		self.cost_list = []
+		self.optimizer_list = []
 		self.mask_list = []
 		self.token_input_sequences_placeholder_list = []
 		self.token_output_sequences_placeholder_list = []
+
+		optimizer_typ =  "adam" #"sgd" #"adam"
+		if "optimizer_typ" in config:
+			optimizer_typ = config['optimizer_typ']
+		self.optimizer_typ = optimizer_typ
+		learning_rate= 0.001 #0.001
+		print "optimizer_typ, learning_rate= ", optimizer_typ, learning_rate
 
 		if mode=='train':
 			for bucket_num, bucket_dct in self.buckets.items():
@@ -32,10 +40,20 @@ class Solver:
 				pred = self.model_obj.getDecoderModel(config, is_training=True, mode='training', reuse=reuse, bucket_num=bucket_num)
 				self.preds.append(pred)
 				self.cost_list.append( self.model_obj.cost )
+				if self.optimizer_typ=="sgd":
+					optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
+					train_op = optimizer
+				else: # adam
+					optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
+					grads = tf.gradients(cost, tf.trainable_variables())
+					grads_and_vars = list(zip(grads, tf.trainable_variables()))
+					train_op = optimizer.apply_gradients(grads_and_vars=grads_and_vars)
+				self.optimizer_list.append(train_op)
 				reuse=True
 			self.token_input_sequences_placeholder_list  = self.model_obj.token_input_sequences_placeholder_list
 			self.token_output_sequences_placeholder_list = self.model_obj.token_output_sequences_placeholder_list
 			self.mask_list = self.model_obj.masker_list
+
 			
 			# for predictions / sampler
 			bucket_num_for_preds = 0 # TO DO: creat separate input placeholder for this
@@ -57,6 +75,8 @@ class Solver:
 			sess = tf.Session()
 			sess.run(init)
 			self.sess= sess
+        else:
+           	sess = self.sess
 
 		saver = tf.train.Saver()
 
@@ -80,25 +100,19 @@ class Solver:
 			token_input_sequences_placeholder = self.token_input_sequences_placeholder_list[bucket_num]
 			token_output_sequences_placeholder = self.token_output_sequences_placeholder_list[bucket_num]
 			feed_dct={token_input_sequences_placeholder:input_sequences, token_output_sequences_placeholder:output_sequences }
+                        #print " ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ "
+                        #print " out shape ", output_sequences.shape
+
 
 			pred = self.preds[bucket_num]
 			masker = self.mask_list[bucket_num]
 			cost = self.cost_list[bucket_num]
 
-			# Gradient descent
-			learning_rate=0.001
-			beta1=0.9
-			beta2=0.999
-			epsilon=1e-08
-			use_locking=False
-			name='Adam'
-			batch_size=config['batch_size']
-			optimizer = tf.train.GradientDescentOptimizer(0.1).minimize(cost)
-			#optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate,beta1=beta1,beta2=beta2,epsilon=epsilon,use_locking=use_locking,name=name).minimize(cost)
+			train_op = self.optimizer_list[bucket_num]
 
 			sess = self.sess
 
-			training_iters=50
+			training_iters=config['training_iters']
 			display_step=1
 			sample_step=2
 			save_step = 1
@@ -121,6 +135,7 @@ class Solver:
 						feed_dict_cur[k] = v[j*batch_size:min(n,(j+1)*batch_size)]
 						#print feed_dict_cur[k].shape
 					cur_out = feed_dict_cur[token_output_sequences_placeholder]
+                                        #print "cur_out .shape ", cur_out.shape
 					x,y = np.nonzero(cur_out)
 					mask = np.zeros(cur_out.shape, dtype=np.float)
 					mask[x,y]=1
@@ -140,7 +155,7 @@ class Solver:
 					print np.sum(pred_cur[0],axis=1)
 					'''
 				if step%save_step==0:
-					save_path = saver.save(sess, "./tmp/tf/model"+str(step)+".ckpt")
+					save_path = saver.save(sess, config['save_model_path']+str(step)+".ckpt")
 	  				print "Model saved in file: ",save_path
 
 				step += 1
@@ -157,7 +172,7 @@ class Solver:
 			print "sess is None.. LOAD?ING SAVED MODEL"
 	  		sess = tf.Session()
 	  		saver = tf.train.Saver()
-	  		saved_model_path = config['saved_model_path']
+	  		saved_model_path = config['saved_model_path_inference']
 	  		print "Loading saved model from : ",saved_model_path
 	  		saver.restore(sess, saved_model_path)
 		model_obj = self.model_obj
@@ -189,7 +204,7 @@ class Solver:
 			print "sess is None.. LOAD?ING SAVED MODEL"
 	  		sess = tf.Session()
 	  		saver = tf.train.Saver()
-	  		saved_model_path = config['saved_model_path']
+	  		saved_model_path = config['saved_model_path_inference']
 	  		print "Loading saved model from : ",saved_model_path
 	  		saver.restore(sess, saved_model_path)
 		batch_size = config['batch_size']
@@ -270,14 +285,14 @@ class Solver:
 		return np.array( [self.sampleFromDistribution(output) for output in outputs ] )
                 #return np.argmax(outputs, axis=1)
 
-	def sample(self, config, reverse_vocab, dump_path, sess=None, batches=1): # Sample
+	def sample(self, config, reverse_vocab, dump_path, sess=None, batches=2000): # Sample
 		print " SAMPLE ============================================================"
 
 		if sess==None:
 			print "sess is None.. LOAD?ING SAVED MODEL"
 	  		sess = tf.Session()
 	  		saver = tf.train.Saver()
-	  		saved_model_path = config['saved_model_path']
+	  		saved_model_path = config['saved_model_path_inference']
 	  		print "Loading saved model from : ",saved_model_path
 	  		saver.restore(sess, saved_model_path)
 
@@ -292,6 +307,8 @@ class Solver:
 
                 fw = open(dump_path,"w")
                 for batch in range(batches):
+                    if batch%100==0:
+                        print "batch  = ",batch
                     inp = np.zeros( (batch_size,1) )
                     for i in range(batch_size): inp[i] = start_symbol_idx
                     outputs = []
