@@ -1,5 +1,5 @@
 
-char_or_word= ["word","char"][0]
+char_or_word= ["word","char"][1]
 print "char_or_word = ",char_or_word
 max_word_seq_length = 40
 max_char_sequence_length = 200
@@ -14,6 +14,12 @@ batch_size = 32
 dropout_val = 0.2
 lstm_cell_size=200
 data_src = "./data/ptb"
+teacher_data_path = "./tmp/samples.txt"
 #print "embeddings_dim = ", embeddings_dim
 
-saved_model_path = "./tmp/tf/model49.ckpt"
+saved_model_path_inference = "./tmp/tf/model49.ckpt"
+
+save_model_path = "./tmp/tf/model "
+training_iters = 25
+training_iters_teacher = 25
+use_teacher_also = True

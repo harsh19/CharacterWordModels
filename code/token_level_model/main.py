@@ -9,6 +9,7 @@ import utilities as datasets
 import utilities
 import solver
 import tensorflow as tf
+import sys
 
 # Set seed for reproducability
 tf.set_random_seed(1)
@@ -58,7 +59,7 @@ class PreProcessing:
 
 	def tokenizer(self, texts):
 		global all_lengths
-		ret = [ text.replace("<unk>","unk") for text in texts ]
+		texts = [ text.replace("<unk>","unk") for text in texts ]
 		ret = [ word_tokenize(text.lower()) for text in texts ]
 		for text in ret:
 			for token in text:
@@ -69,7 +70,7 @@ class PreProcessing:
 		ret = [ [ self.word_index[t] for t in text ] for text in ret ]
 		return ret
 
-	def char_tokenizer(self, texts, special_tokens={'<unk>':'U'}):
+        def char_tokenizer(self, texts, special_tokens={'<unk>':'U', '< unk >':'U'}):
 		global all_lengths
 		print texts[7]
 		for k,v in special_tokens.items():
@@ -84,7 +85,7 @@ class PreProcessing:
 		ret = [ [ self.word_index[t] for t in text ] for text in texts ]
 		return ret
 
-	def loadData(self, split='train', char_or_word="word"):   
+	def loadData(self, split='train', char_or_word="word", use_teacher_also=False):   
 		print "-----------------loadData()--------- split= ",split
 		data_src = config.data_src + "." + split + ".txt"
 		texts=[]
@@ -97,22 +98,41 @@ class PreProcessing:
 					if ctr>200:
 						break
 		else:
-			texts = open(data_src,"r").readlines()
+		        if char_or_word=="word":
+			        texts = open(data_src,"r").readlines()
+                        else:
+                                if split!='train':
+                                        texts = open(data_src,"r").readlines()
+                                else:
+                                        ## TEMPORARILY SWITCHING TO normal CHARACTER MODEL WITH ADAM - T HAVE FAIR COMPARISON WHETHER STUDENT IS PERFORMING BETTER DUE TO FORMULATION OR OPTIMIZER
+                                        texts = open(data_src,"r").readlines()
+                                        if use_teacher_also:
+                                            texts_from_teacher = open(config.teacher_data_path,"r").readlines()[:21000]
+                                        print "$$$$$$$$$$$$$$$$$$$$$ ============= $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ "
+                                        ## texts = open(config.teacher_data_path,"r").readlines()
+                                        print len(texts), texts[0]
 		if char_or_word=="word":
 			texts = [self.sent_start + " " + text + " " + self.sent_end for text in texts]
 			sequences = self.tokenizer(texts)
 			word_index = self.word_index
 			#TO DO: add bucketing...
 		else: # character
-			sequences = self.char_tokenizer(texts)
-			word_index = self.word_index			
-			sequences = [ [self.word_index[self.sent_start]] + sequence + [self.word_index[self.sent_end]] for sequence in sequences]
+                	sequences = self.char_tokenizer(texts)
+		        sequences = [ [self.word_index[self.sent_start]] + sequence + [self.word_index[self.sent_end]] for sequence in sequences]
 			#TO DO: add bucketing...
+                        if use_teacher_also:
+                		sequences_teacher = self.char_tokenizer(texts_from_teacher)
+		                sequences_teacher = [ [self.word_index[self.sent_start]] + sequence + [self.word_index[self.sent_end]] for sequence in sequences_teacher]
+		                sequences_teacher = self.pad_sequences_my(sequences_teacher, maxlen=config.MAX_SEQUENCE_LENGTH)	
+	                #word_index = self.word_index 
+
 		sequences = self.pad_sequences_my(sequences, maxlen=config.MAX_SEQUENCE_LENGTH)	
 		#word_index[self.unknown_word]=0
 		print sequences[0]
 		print texts[0]
 		print "-----------------Done loadData()---------"
+                if use_teacher_also:
+                    return sequences, sequences_teacher
 		return sequences
 
 
@@ -163,11 +183,15 @@ def main():
 	params['char_or_word'] = config.char_or_word
 	params['use_tf'] = True
 	params['keep_prob'] = 1.0 - config.dropout_val
+        params['use_teacher_also'] = config.use_teacher_also
 	print params
 
 	preprocessing = PreProcessing(params)
 
-	train_sequences = preprocessing.loadData(split='train', char_or_word=params['char_or_word'] )		
+        use_teacher_also = config.use_teacher_also
+	train_sequences = preprocessing.loadData(split='train', char_or_word=params['char_or_word'], use_teacher_also=params['use_teacher_also'] )		
+        if use_teacher_also:
+            train_sequences, train_sequences_teacher = train_sequences
 	val_sequences = preprocessing.loadData(split='valid', char_or_word=params['char_or_word'] )
 	test_sequences = preprocessing.loadData(split='test', char_or_word=params['char_or_word'] )	
 	print preprocessing.word_index[preprocessing.sent_start]
@@ -175,6 +199,8 @@ def main():
 	index_word = {i:w for w,i in preprocessing.word_index.items()}
 	preprocessing.index_word = index_word
 	train = preprocessing.prepareLMdata(train_sequences)
+        if use_teacher_also:
+            train_teacher = preprocessing.prepareLMdata(train_sequences_teacher)
 	val = preprocessing.prepareLMdata(val_sequences)
 	test = preprocessing.prepareLMdata(test_sequences)
 	#train_weights = preprocessing.loadTeacherProbValuesForTrain() # the function will pick the default path from config
@@ -200,22 +226,38 @@ def main():
 	
 	if params['use_tf']:
 		# model
-		mode=  ["inference", "train", "sample"][2]
+		mode =  sys.argv[1]  # ["inference", "train", "sample"][1]
 		print "mode = ",mode
 		if mode=='train':
-			train_buckets = {}
-			train = data, labels
-			for bucket,_ in enumerate(buckets):
-				train_buckets[bucket] = train
+                        params['save_model_path'] = config.save_model_path
+                        
 
 			rnn_model = solver.Solver(buckets)
 			_ = rnn_model.getModel(params, mode='train',reuse=False, buckets=buckets)
-			rnn_model.trainModel(config=params, train_feed_dict=train_buckets, val_feed_dct=val, reverse_vocab=preprocessing.index_word, do_init=True)
+			
+                        if use_teacher_also:
+                                params['training_iters'] = config.training_iters_teacher
+        			train_buckets = {}
+                                if debug_mode:
+                                    data, labels = train_teacher
+                                    train_teacher = data[:192], labels[:192]
+		        	for bucket,_ in enumerate(buckets):
+			        	train_buckets[bucket] = train_teacher
+            			rnn_model.trainModel(config=params, train_feed_dict=train_buckets, val_feed_dct=val, reverse_vocab=preprocessing.index_word, do_init=True)
+                        
+                        do_init=True
+                        if use_teacher_also:
+                            do_init=False
+        		train_buckets = {}
+		        for bucket,_ in enumerate(buckets):
+                                params['training_iters'] = config.training_iters
+			     	train_buckets[bucket] = train
+                        rnn_model.trainModel(config=params, train_feed_dict=train_buckets, val_feed_dct=val, reverse_vocab=preprocessing.index_word, do_init=do_init)
 		
 		else: # inference, sample
 			rnn_model = solver.Solver(buckets=None, mode='inference')
 			params['max_inp_seq_length'] = 39
-			params['saved_model_path'] = config.saved_model_path
+			params['saved_model_path_inference'] = config.saved_model_path_inference
 			_ = rnn_model.getModel(params, mode='inference', reuse=False, buckets=None)
 
 			if mode == 'inference':
