@@ -19,7 +19,7 @@ teacher_data_path = "./tmp/samples.txt"
 
 saved_model_path_inference = "./tmp/tf/model49.ckpt"
 
-save_model_path = "./tmp/tf/model "
-training_iters = 25
+save_model_path = "./tmp/tf/model_allTeacherData "
+training_iters = 50
 training_iters_teacher = 25
 use_teacher_also = True

@@ -15,7 +15,7 @@ import sys
 tf.set_random_seed(1)
 
 
-debug_mode = True
+debug_mode = False
 all_lengths = []
 
 class PreProcessing:
@@ -72,7 +72,7 @@ class PreProcessing:
 		ret = [ [ self.word_index[t] for t in text ] for text in ret ]
 		return ret
 
-		def char_tokenizer(self, texts, special_tokens={'<unk>':'U', '< unk >':'U'}):
+	def char_tokenizer(self, texts, special_tokens={'<unk>':'U', '< unk >':'U'}):
 		global all_lengths
 		print texts[7]
 		for k,v in special_tokens.items():
@@ -102,14 +102,16 @@ class PreProcessing:
 		else:
 				if char_or_word=="word":
 					texts = open(data_src,"r").readlines()
-						else:
+				else:
 								if split!='train':
 										texts = open(data_src,"r").readlines()
 								else:
 										## TEMPORARILY SWITCHING TO normal CHARACTER MODEL WITH ADAM - T HAVE FAIR COMPARISON WHETHER STUDENT IS PERFORMING BETTER DUE TO FORMULATION OR OPTIMIZER
+										print "------ ERERERERERER "
 										texts = open(data_src,"r").readlines()
 										if use_teacher_also:
-											texts_from_teacher = open(config.teacher_data_path,"r").readlines()[:21000]
+                                                                                        print "***** DOES REACH HERER ***"
+											texts_from_teacher = open(config.teacher_data_path,"r").readlines()[:]
 										print "$$$$$$$$$$$$$$$$$$$$$ ============= $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ "
 										## texts = open(config.teacher_data_path,"r").readlines()
 										print len(texts), texts[0]
@@ -119,22 +121,22 @@ class PreProcessing:
 			word_index = self.word_index
 			#TO DO: add bucketing...
 		else: # character
-					sequences = self.char_tokenizer(texts)
-				sequences = [ [self.word_index[self.sent_start]] + sequence + [self.word_index[self.sent_end]] for sequence in sequences]
-			#TO DO: add bucketing...
-						if use_teacher_also:
-						sequences_teacher = self.char_tokenizer(texts_from_teacher)
-						sequences_teacher = [ [self.word_index[self.sent_start]] + sequence + [self.word_index[self.sent_end]] for sequence in sequences_teacher]
-						sequences_teacher = self.pad_sequences_my(sequences_teacher, maxlen=config.MAX_SEQUENCE_LENGTH)	
-					#word_index = self.word_index 
+			sequences = self.char_tokenizer(texts)
+			sequences = [ [self.word_index[self.sent_start]] + sequence + [self.word_index[self.sent_end]] for sequence in sequences]
+        		#TO DO: add bucketing...
+			if use_teacher_also:
+				sequences_teacher = self.char_tokenizer(texts_from_teacher)
+				sequences_teacher = [ [self.word_index[self.sent_start]] + sequence + [self.word_index[self.sent_end]] for sequence in sequences_teacher]
+				sequences_teacher = self.pad_sequences_my(sequences_teacher, maxlen=config.MAX_SEQUENCE_LENGTH)	
+			        #word_index = self.word_index 
 
 		sequences = self.pad_sequences_my(sequences, maxlen=config.MAX_SEQUENCE_LENGTH)	
 		#word_index[self.unknown_word]=0
 		print sequences[1]
 		print texts[1]
 		print "-----------------Done loadData()---------"
-				if use_teacher_also:
-					return sequences, sequences_teacher
+		if use_teacher_also:
+			return sequences, sequences_teacher
 		return sequences
 
 
@@ -248,8 +250,8 @@ def main():
 			do_init=False
 		train_buckets = {}
 		for bucket,_ in enumerate(buckets):
-		params['training_iters'] = config.training_iters
-	 	train_buckets[bucket] = train
+	        	params['training_iters'] = config.training_iters
+        	 	train_buckets[bucket] = train
 		rnn_model.trainModel(config=params, train_feed_dict=train_buckets, val_feed_dct=val, reverse_vocab=preprocessing.index_word, do_init=do_init)
 	
 	else: # inference, sample

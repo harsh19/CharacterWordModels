@@ -40,6 +40,7 @@ class Solver:
 				pred = self.model_obj.getDecoderModel(config, is_training=True, mode='training', reuse=reuse, bucket_num=bucket_num)
 				self.preds.append(pred)
 				self.cost_list.append( self.model_obj.cost )
+				cost = self.model_obj.cost 
 				if self.optimizer_typ=="sgd":
 					optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
 					train_op = optimizer
@@ -75,8 +76,8 @@ class Solver:
 			sess = tf.Session()
 			sess.run(init)
 			self.sess= sess
-        else:
-           	sess = self.sess
+                else:
+           	    sess = self.sess
 
 		saver = tf.train.Saver()
 
@@ -117,6 +118,7 @@ class Solver:
 			sample_step=2
 			save_step = 1
 			n = feed_dct[token_input_sequences_placeholder].shape[0]
+                        batch_size = config['batch_size']
 
 			# Launch the graph
 			step = 1
@@ -140,7 +142,7 @@ class Solver:
 					mask = np.zeros(cur_out.shape, dtype=np.float)
 					mask[x,y]=1
 					feed_dict_cur[masker]=mask
-					sess.run(optimizer, feed_dict=feed_dict_cur )
+					sess.run(train_op, feed_dict=feed_dict_cur )
 
 				if step % display_step == 0:
 	  				val_x,val_y = val_feed_dct
