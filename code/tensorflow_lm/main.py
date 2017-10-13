@@ -116,6 +116,14 @@ class PreProcessing:
 		print "-----------------Done loadData()---------"
 		return sequences
 
+	def loadTeacherProbValuesForTrain(self, src=config.dumped_train_probs_path):
+		data = open(src,"r").readlines()
+		ret = [ float(row.strip().split('\t')[1]) for row in data ]
+		ret = np.array(ret)
+		# change from log prob to prob
+		ret = np.exp(ret) # chance of underflow ??
+		return ret
+
 	def prepareLMdata(self, sequences):
 		data = np.array( [ sequence[:-1] for sequence in sequences ] )
 		if self.params['use_tf']:
@@ -177,9 +185,13 @@ def main():
 	train = preprocessing.prepareLMdata(train_sequences)
 	val = preprocessing.prepareLMdata(val_sequences)
 	test = preprocessing.prepareLMdata(test_sequences)
-	#return
+	train_weights = preprocessing.loadTeacherProbValuesForTrain() # the function will pick the default path from config
+	
+	#Sanity check
+	trainx, trainy = train
+	assert train_weights.shape[0] == trainx.shape[0]
 
-	#
+	# seq. length analysis
 	global all_lengths
 	all_lengths = np.array(all_lengths)
 	import scipy.stats
@@ -198,10 +210,11 @@ def main():
 	
 	if params['use_tf']:
 		# model
-		mode=  ["inference", "train"][0]
+		mode=  ["inference", "train"][1]
 		print "mode = ",mode
 		if mode=='train':
 			train_buckets = {}
+			train = data, labels, train_weights
 			for bucket,_ in enumerate(buckets):
 				train_buckets[bucket] = train
 
